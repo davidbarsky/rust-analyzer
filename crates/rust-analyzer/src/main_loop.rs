@@ -743,9 +743,17 @@ impl GlobalState {
                                     })
                                 })
                             }
-                            project_model::ProjectWorkspace::Json { project, .. } => project
-                                .crates()
-                                .any(|(c, _)| crate_ids.iter().any(|&crate_id| crate_id == c)),
+                            project_model::ProjectWorkspace::Json { project, .. } => {
+                                project.crates().any(|(c, krate)| {
+                                    if crate_ids.iter().any(|&crate_id| crate_id == c) {
+                                        for flycheck in world.flycheck.iter() {
+                                            flycheck.restart_with(krate.build_command.clone())
+                                        }
+                                    }
+
+                                    false
+                                })
+                            }
                             project_model::ProjectWorkspace::DetachedFiles { .. } => false,
                         });
 

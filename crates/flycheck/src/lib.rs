@@ -101,6 +101,13 @@ impl FlycheckHandle {
         self.sender.send(Restart::Yes).unwrap();
     }
 
+    /// Schedule a re-start of the cargo check worker with a new command.
+    pub fn restart_with(&self, build_command: Vec<String>) {
+        let mut command = Command::new(&build_command[0]);
+        command.args(&build_command[1..]);
+        self.sender.send(Restart::YesWithCommand { command }).unwrap();
+    }
+
     /// Stop this cargo check worker.
     pub fn cancel(&self) {
         self.sender.send(Restart::No).unwrap();
@@ -150,6 +157,7 @@ pub enum Progress {
 
 enum Restart {
     Yes,
+    YesWithCommand { command: Command },
     No,
 }
 
@@ -237,6 +245,37 @@ impl FlycheckActor {
                             )));
                         }
                     }
+                }
+                Event::Restart(Restart::YesWithCommand { command }) => {
+                    // Cancel the previously spawned process
+                    self.cancel_check_process();
+                    while let Ok(restart) = inbox.recv_timeout(Duration::from_millis(50)) {
+                        // restart chained with a stop, so just cancel
+                        if let Restart::No = restart {
+                            continue 'event;
+                        }
+                    }
+
+                    match CargoHandle::spawn(command) {
+                        Ok(cargo_handle) => {
+                            tracing::debug!(
+                                command = ?self.check_command(),
+                                "did restart flycheck"
+                            );
+                            self.cargo_handle = Some(cargo_handle);
+                            self.report_progress(Progress::DidStart);
+                        }
+                        Err(error) => {
+                            self.report_progress(Progress::DidFailToRestart(format!(
+                                "Failed to run the following command: {:?} error={}",
+                                self.check_command(),
+                                error
+                            )));
+                        }
+                    }
+
+                    let command = self.check_command();
+                    tracing::debug!(?command, "will restart flycheck");
                 }
                 Event::CheckEvent(None) => {
                     tracing::debug!(flycheck_id = self.id, "flycheck finished");

@@ -43,6 +43,7 @@ pub struct Crate {
     pub(crate) exclude: Vec<AbsPathBuf>,
     pub(crate) is_proc_macro: bool,
     pub(crate) repository: Option<String>,
+    pub build_command: Vec<String>,
 }
 
 impl ProjectJson {
@@ -105,6 +106,7 @@ impl ProjectJson {
                         exclude,
                         is_proc_macro: crate_data.is_proc_macro,
                         repository: crate_data.repository,
+                        build_command: crate_data.build_command,
                     }
                 })
                 .collect::<Vec<_>>(),
@@ -154,6 +156,8 @@ struct CrateData {
     is_proc_macro: bool,
     #[serde(default)]
     repository: Option<String>,
+    #[serde(default)]
+    pub build_command: Vec<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
