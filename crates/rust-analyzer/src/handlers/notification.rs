@@ -153,7 +153,7 @@ pub(crate) fn handle_did_save_text_document(
     } else if state.config.check_on_save() {
         // No specific flycheck was triggered, so let's trigger all of them.
         for flycheck in state.flycheck.iter() {
-            flycheck.restart();
+            flycheck.restart(None);
         }
     }
     Ok(())
@@ -289,12 +289,14 @@ fn run_flycheck(state: &mut GlobalState, vfs_path: VfsPath) -> bool {
                 project_model::ProjectWorkspace::DetachedFiles { .. } => false,
             });
 
+            let saved_file = vfs_path.as_path().map(|p| p.to_owned());
+
             // Find and trigger corresponding flychecks
             for flycheck in world.flycheck.iter() {
                 for (id, _) in workspace_ids.clone() {
                     if id == flycheck.id() {
                         updated = true;
-                        flycheck.restart();
+                        flycheck.restart(saved_file.clone());
                         continue;
                     }
                 }
@@ -302,7 +304,7 @@ fn run_flycheck(state: &mut GlobalState, vfs_path: VfsPath) -> bool {
             // No specific flycheck was triggered, so let's trigger all of them.
             if !updated {
                 for flycheck in world.flycheck.iter() {
-                    flycheck.restart();
+                    flycheck.restart(saved_file.clone());
                 }
             }
             Ok(())
@@ -344,7 +346,7 @@ pub(crate) fn handle_run_flycheck(
     }
     // No specific flycheck was triggered, so let's trigger all of them.
     for flycheck in state.flycheck.iter() {
-        flycheck.restart();
+        flycheck.restart(None);
     }
     Ok(())
 }

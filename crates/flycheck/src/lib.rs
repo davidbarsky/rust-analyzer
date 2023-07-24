@@ -14,7 +14,7 @@ use std::{
 
 use command_group::{CommandGroup, GroupChild};
 use crossbeam_channel::{never, select, unbounded, Receiver, Sender};
-use paths::AbsPathBuf;
+use paths::{AbsPath, AbsPathBuf};
 use rustc_hash::FxHashMap;
 use serde::Deserialize;
 use stdx::process::streaming_output;
@@ -101,8 +101,8 @@ impl FlycheckHandle {
     }
 
     /// Schedule a re-start of the cargo check worker.
-    pub fn restart(&self) {
-        self.sender.send(StateChange::Restart).unwrap();
+    pub fn restart(&self, saved_file: Option<AbsPathBuf>) {
+        self.sender.send(StateChange::Restart { saved_file }).unwrap();
     }
 
     /// Stop this cargo check worker.
@@ -153,7 +153,7 @@ pub enum Progress {
 }
 
 enum StateChange {
-    Restart,
+    Restart { saved_file: Option<AbsPathBuf> },
     Cancel,
 }
 
@@ -178,6 +178,8 @@ enum Event {
     RequestStateChange(StateChange),
     CheckEvent(Option<CargoMessage>),
 }
+
+const SAVED_FILE_PLACEHOLDER: &str = "$saved_file";
 
 impl FlycheckActor {
     fn new(
@@ -213,7 +215,7 @@ impl FlycheckActor {
                     tracing::debug!(flycheck_id = self.id, "flycheck cancelled");
                     self.cancel_check_process();
                 }
-                Event::RequestStateChange(StateChange::Restart) => {
+                Event::RequestStateChange(StateChange::Restart { saved_file }) => {
                     // Cancel the previously spawned process
                     self.cancel_check_process();
                     while let Ok(restart) = inbox.recv_timeout(Duration::from_millis(50)) {
@@ -223,7 +225,10 @@ impl FlycheckActor {
                         }
                     }
 
-                    let command = self.check_command();
+                    let command = match self.check_command(saved_file.as_deref()) {
+                        Some(c) => c,
+                        None => continue,
+                    };
                     let formatted_command = format!("{:?}", command);
 
                     tracing::debug!(?command, "will restart flycheck");
@@ -297,7 +302,10 @@ impl FlycheckActor {
         }
     }
 
-    fn check_command(&self) -> Command {
+    /// Construct a `Command` object for checking the user's code. If the user
+    /// has specified a custom command with placeholders that we cannot fill,
+    /// return None.
+    fn check_command(&self, saved_file: Option<&AbsPath>) -> Option<Command> {
         let (mut cmd, args) = match &self.config {
             FlycheckConfig::CargoCommand {
                 command,
@@ -346,7 +354,7 @@ impl FlycheckActor {
                     cmd.arg("--target-dir").arg(target_dir);
                 }
                 cmd.envs(extra_env);
-                (cmd, extra_args)
+                (cmd, extra_args.clone())
             }
             FlycheckConfig::CustomCommand {
                 command,
@@ -375,12 +383,34 @@ impl FlycheckActor {
                     }
                 }
 
-                (cmd, args)
+                if args.contains(&SAVED_FILE_PLACEHOLDER.to_owned()) {
+                    // If the custom command has a $saved_file placeholder, and
+                    // we're saving a file, replace the placeholder in the arguments.
+                    if let Some(saved_file) = saved_file {
+                        let args = args
+                            .iter()
+                            .map(|arg| {
+                                if arg == SAVED_FILE_PLACEHOLDER {
+                                    saved_file.to_string()
+                                } else {
+                                    arg.clone()
+                                }
+                            })
+                            .collect();
+                        (cmd, args)
+                    } else {
+                        // The custom command has a $saved_file placeholder,
+                        // but we had an IDE event that wasn't a file save. Do nothing.
+                        return None;
+                    }
+                } else {
+                    (cmd, args.clone())
+                }
             }
         };
 
         cmd.args(args);
-        cmd
+        Some(cmd)
     }
 
     fn send(&self, check_task: Message) {
