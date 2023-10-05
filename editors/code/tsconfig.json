@@ -10,7 +10,6 @@
         "sourceMap": true,
         "rootDir": ".",
         "newLine": "lf",
-
         // FIXME: https://github.com/rust-lang/rust-analyzer/issues/15253
         "exactOptionalPropertyTypes": false
     },

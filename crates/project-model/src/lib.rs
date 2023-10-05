@@ -20,7 +20,7 @@
 mod manifest_path;
 mod cargo_workspace;
 mod cfg_flag;
-mod project_json;
+pub mod project_json;
 mod sysroot;
 mod workspace;
 mod rustc_cfg;

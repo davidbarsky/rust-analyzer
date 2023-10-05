@@ -104,23 +104,33 @@ export function prepareEnv(
 }
 
 export async function createTask(runnable: ra.Runnable, config: Config): Promise<vscode.Task> {
-    if (runnable.kind !== "cargo") {
-        // rust-analyzer supports only one kind, "cargo"
-        // do not use tasks.TASK_TYPE here, these are completely different meanings.
+    let definition: tasks.CargoTaskDefinition;
+    let args: string[];
+    if (runnable.kind === "cargo") {
+        const cargoArgs = runnable.args as ra.CargoRunnable;
+        args = createCargoArgs(cargoArgs);
 
-        throw `Unexpected runnable kind: ${runnable.kind}`;
+        definition = {
+            type: tasks.TASK_TYPE,
+            command: args[0], // run, test, etc...
+            args: args.slice(1),
+            cwd: cargoArgs.workspaceRoot || ".",
+            env: prepareEnv(runnable, config.runnablesExtraEnv),
+            overrideCargo: cargoArgs.overrideCargo,
+        };
+    } else {
+        const projectJsonRunnableArgs = runnable.args as ra.ProjectJsonRunnable;
+        args = projectJsonRunnableArgs.args;
+
+        definition = {
+            type: tasks.TASK_TYPE,
+            command: args[0],
+            args: args.slice(1),
+            cwd: projectJsonRunnableArgs.workspaceRoot,
+            env: prepareEnv(runnable, config.runnablesExtraEnv),
+            overrideCargo: "buck2",
+        };
     }
-
-    const args = createArgs(runnable);
-
-    const definition: tasks.CargoTaskDefinition = {
-        type: tasks.TASK_TYPE,
-        command: args[0], // run, test, etc...
-        args: args.slice(1),
-        cwd: runnable.args.workspaceRoot || ".",
-        env: prepareEnv(runnable, config.runnablesExtraEnv),
-        overrideCargo: runnable.args.overrideCargo,
-    };
 
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
     const target = vscode.workspace.workspaceFolders![0]; // safe, see main activate()
@@ -142,13 +152,13 @@ export async function createTask(runnable: ra.Runnable, config: Config): Promise
     return cargoTask;
 }
 
-export function createArgs(runnable: ra.Runnable): string[] {
-    const args = [...runnable.args.cargoArgs]; // should be a copy!
-    if (runnable.args.cargoExtraArgs) {
-        args.push(...runnable.args.cargoExtraArgs); // Append user-specified cargo options.
+export function createCargoArgs(runnable: ra.CargoRunnable): string[] {
+    const args = [...runnable.cargoArgs]; // should be a copy!
+    if (runnable.cargoExtraArgs) {
+        args.push(...runnable.cargoExtraArgs); // Append user-specified cargo options.
     }
-    if (runnable.args.executableArgs.length > 0) {
-        args.push("--", ...runnable.args.executableArgs);
+    if (runnable.executableArgs.length > 0) {
+        args.push("--", ...runnable.executableArgs);
     }
     return args;
 }

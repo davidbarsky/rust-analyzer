@@ -19,7 +19,7 @@ macro_rules! eprintln {
 }
 
 mod caps;
-mod cargo_target_spec;
+mod target_spec;
 mod diagnostics;
 mod diff;
 mod dispatch;
