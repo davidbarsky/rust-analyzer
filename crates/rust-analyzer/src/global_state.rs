@@ -33,7 +33,7 @@ use crate::{
     mem_docs::MemDocs,
     op_queue::OpQueue,
     reload,
-    task_pool::TaskPool,
+    task_pool::{TaskPool, TaskQueue},
 };
 
 // Enforces drop order
@@ -54,7 +54,7 @@ type ReqQueue = lsp_server::ReqQueue<(String, Instant), ReqHandler>;
 /// Note that this struct has more than one impl in various modules!
 #[doc(alias = "GlobalMess")]
 pub(crate) struct GlobalState {
-    sender: Sender<lsp_server::Message>,
+    pub(crate) sender: Sender<lsp_server::Message>,
     req_queue: ReqQueue,
 
     pub(crate) task_pool: Handle<TaskPool<Task>, Receiver<Task>>,
@@ -84,7 +84,7 @@ pub(crate) struct GlobalState {
     pub(crate) last_flycheck_error: Option<String>,
 
     // VFS
-    pub(crate) loader: Handle<Box<dyn vfs::loader::Handle>, Receiver<vfs::loader::Message>>,
+    pub(crate) loader: Handle<Box<dyn vfs::loader::Handle + Send>, Receiver<vfs::loader::Message>>,
     pub(crate) vfs: Arc<RwLock<(vfs::Vfs, IntMap<FileId, LineEndings>)>>,
     pub(crate) vfs_config_version: u32,
     pub(crate) vfs_progress_config_version: u32,
@@ -126,6 +126,10 @@ pub(crate) struct GlobalState {
         OpQueue<(), (Arc<Vec<ProjectWorkspace>>, Vec<anyhow::Result<WorkspaceBuildScripts>>)>,
     pub(crate) fetch_proc_macros_queue: OpQueue<Vec<ProcMacroPaths>, bool>,
     pub(crate) prime_caches_queue: OpQueue,
+
+    /// a deferred task queue. this should only be used if the enqueued Task
+    /// can only run *after* [`GlobalState::process_changes`] has been called.
+    pub(crate) deferred_task_queue: TaskQueue,
 }
 
 /// An immutable snapshot of the world's state at a point in time.
@@ -150,7 +154,7 @@ impl GlobalState {
             let (sender, receiver) = unbounded::<vfs::loader::Message>();
             let handle: vfs_notify::NotifyHandle =
                 vfs::loader::Handle::spawn(Box::new(move |msg| sender.send(msg).unwrap()));
-            let handle = Box::new(handle) as Box<dyn vfs::loader::Handle>;
+            let handle = Box::new(handle) as Box<dyn vfs::loader::Handle + Send>;
             Handle { handle, receiver }
         };
 
@@ -163,6 +167,11 @@ impl GlobalState {
             let (sender, receiver) = unbounded();
             let handle = TaskPool::new_with_threads(sender, 1);
             Handle { handle, receiver }
+        };
+
+        let task_queue = {
+            let (sender, receiver) = unbounded();
+            TaskQueue { sender, receiver }
         };
 
         let mut analysis_host = AnalysisHost::new(config.lru_parse_query_capacity());
@@ -208,6 +217,8 @@ impl GlobalState {
             fetch_proc_macros_queue: OpQueue::default(),
 
             prime_caches_queue: OpQueue::default(),
+
+            deferred_task_queue: task_queue,
         };
         // Apply any required database inputs from the config.
         this.update_configuration(config);
@@ -430,7 +441,7 @@ impl GlobalState {
         self.req_queue.incoming.is_completed(&request.id)
     }
 
-    fn send(&self, message: lsp_server::Message) {
+    pub(crate) fn send(&self, message: lsp_server::Message) {
         self.sender.send(message).unwrap()
     }
 }

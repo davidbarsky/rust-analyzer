@@ -1,5 +1,6 @@
 //! The main loop of `rust-analyzer` responsible for dispatching LSP
 //! requests/replies and notifications back to the client.
+use crate::lsp::ext;
 use std::{
     fmt,
     time::{Duration, Instant},
@@ -55,8 +56,14 @@ pub fn main_loop(config: Config, connection: Connection) -> anyhow::Result<()> {
 enum Event {
     Lsp(lsp_server::Message),
     Task(Task),
+    QueuedTask(QueuedTask),
     Vfs(vfs::loader::Message),
     Flycheck(flycheck::Message),
+}
+
+#[derive(Debug)]
+pub(crate) enum QueuedTask {
+    CheckIfIndexed(lsp_types::Url),
 }
 
 #[derive(Debug)]
@@ -103,6 +110,7 @@ impl fmt::Debug for Event {
         match self {
             Event::Lsp(it) => fmt::Debug::fmt(it, f),
             Event::Task(it) => fmt::Debug::fmt(it, f),
+            Event::QueuedTask(it) => fmt::Debug::fmt(it, f),
             Event::Vfs(it) => fmt::Debug::fmt(it, f),
             Event::Flycheck(it) => fmt::Debug::fmt(it, f),
         }
@@ -181,6 +189,9 @@ impl GlobalState {
             recv(self.task_pool.receiver) -> task =>
                 Some(Event::Task(task.unwrap())),
 
+            recv(self.deferred_task_queue.receiver) -> task =>
+                Some(Event::QueuedTask(task.unwrap())),
+
             recv(self.fmt_pool.receiver) -> task =>
                 Some(Event::Task(task.unwrap())),
 
@@ -198,7 +209,7 @@ impl GlobalState {
         let _p = profile::span("GlobalState::handle_event");
 
         let event_dbg_msg = format!("{event:?}");
-        tracing::debug!("{:?} handle_event({})", loop_start, event_dbg_msg);
+        tracing::debug!(?loop_start, ?event, "handle_event");
         if tracing::enabled!(tracing::Level::INFO) {
             let task_queue_len = self.task_pool.handle.len();
             if task_queue_len > 0 {
@@ -213,6 +224,14 @@ impl GlobalState {
                 lsp_server::Message::Notification(not) => self.on_notification(not)?,
                 lsp_server::Message::Response(resp) => self.complete_request(resp),
             },
+            Event::QueuedTask(task) => {
+                let _p = profile::span("GlobalState::handle_event/queued_task");
+                self.handle_queued_task(task);
+                // Coalesce multiple task events into one loop turn
+                while let Ok(task) = self.deferred_task_queue.receiver.try_recv() {
+                    self.handle_queued_task(task);
+                }
+            }
             Event::Task(task) => {
                 let _p = profile::span("GlobalState::handle_event/task");
                 let mut prime_caches_progress = Vec::new();
@@ -602,6 +621,35 @@ impl GlobalState {
                     Some(Progress::fraction(n_done, n_total)),
                     None,
                 );
+            }
+        }
+    }
+
+    fn handle_queued_task(&mut self, task: QueuedTask) {
+        match task {
+            QueuedTask::CheckIfIndexed(uri) => {
+                let snap = self.snapshot();
+                let sender = self.sender.clone();
+
+                self.task_pool.handle.spawn_with_sender(ThreadIntent::Worker, move |_| {
+                    let _p = profile::span("GlobalState::check_if_indexed");
+                    tracing::debug!(?uri, "handling uri");
+                    let id = from_proto::file_id(&snap, &uri).expect("unable to get FileId");
+                    if let Ok(crates) = &snap.analysis.crates_for(id) {
+                        if crates.is_empty() {
+                            let not = lsp_server::Notification::new(
+                                ext::UnindexedProject::METHOD.to_string(),
+                                ext::UnindexedProjectParams {
+                                    text_documents: vec![lsp_types::TextDocumentIdentifier { uri }],
+                                },
+                            );
+                            sender.send(not.into()).expect("unable to send notification");
+                            tracing::debug!("sent notification");
+                        } else {
+                            tracing::debug!(?uri, "is indexed");
+                        }
+                    }
+                });
             }
         }
     }
