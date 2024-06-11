@@ -367,8 +367,12 @@ impl ProjectWorkspace {
             }
         };
 
+        let now = std::time::Instant::now();
         let rustc_cfg = rustc_cfg::get(target, extra_env, cfg_config);
         let data_layout = target_data_layout::get(data_layout_config, target, extra_env);
+        let elapsed = now.elapsed();
+        eprintln!("Fetching layout data took: {}", elapsed.as_millis());
+
         ProjectWorkspace {
             kind: ProjectWorkspaceKind::Json(project_json),
             sysroot,

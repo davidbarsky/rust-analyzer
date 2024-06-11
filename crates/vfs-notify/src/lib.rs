@@ -24,7 +24,7 @@ use walkdir::WalkDir;
 pub struct NotifyHandle {
     // Relative order of fields below is significant.
     sender: Sender<Message>,
-    _thread: stdx::thread::JoinHandle,
+    _threads: Vec<stdx::thread::JoinHandle>,
 }
 
 #[derive(Debug)]
@@ -34,14 +34,21 @@ enum Message {
 }
 
 impl loader::Handle for NotifyHandle {
-    fn spawn(sender: loader::Sender) -> NotifyHandle {
-        let actor = NotifyActor::new(sender);
+    fn spawn(loader_sender: loader::Sender) -> NotifyHandle {
         let (sender, receiver) = unbounded::<Message>();
-        let thread = stdx::thread::Builder::new(stdx::thread::ThreadIntent::Worker)
-            .name("VfsLoader".to_owned())
-            .spawn(move || actor.run(receiver))
-            .expect("failed to spawn thread");
-        NotifyHandle { sender, _thread: thread }
+
+        let mut threads = vec![];
+        for i in 1..=4 {
+            let actor = NotifyActor::new(loader_sender.clone());
+
+            let receiver = receiver.clone();
+            let thread = stdx::thread::Builder::new(stdx::thread::ThreadIntent::Worker)
+                .name(format!("VfsLoader_{i}"))
+                .spawn(move || actor.run(receiver))
+                .expect("failed to spawn thread");
+            threads.push(thread);
+        }
+        NotifyHandle { sender, _threads: threads }
     }
 
     fn set_config(&mut self, config: loader::Config) {
@@ -127,6 +134,7 @@ impl NotifyActor {
                                     dir: Some(file),
                                     config_version,
                                 });
+                            dbg!("sending loaded/progress message");
                             self.send(loader::Message::Loaded { files });
                             self.send(loader::Message::Progress {
                                 n_total,
@@ -255,7 +263,7 @@ impl NotifyActor {
         }
     }
     fn send(&mut self, msg: loader::Message) {
-        (self.sender)(msg);
+        self.sender.send(msg).unwrap();
     }
 }
 

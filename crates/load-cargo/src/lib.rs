@@ -58,8 +58,7 @@ pub fn load_workspace(
     let (sender, receiver) = unbounded();
     let mut vfs = vfs::Vfs::default();
     let mut loader = {
-        let loader =
-            vfs_notify::NotifyHandle::spawn(Box::new(move |msg| sender.send(msg).unwrap()));
+        let loader = vfs_notify::NotifyHandle::spawn(sender);
         Box::new(loader)
     };
 
@@ -350,6 +349,7 @@ fn load_crate_graph(
     receiver: &Receiver<vfs::loader::Message>,
 ) -> RootDatabase {
     let ProjectWorkspace { toolchain, target_layout, .. } = ws;
+    dbg!("loading crate graph");
 
     let lru_cap = std::env::var("RA_LRU_CAP").ok().and_then(|it| it.parse::<usize>().ok());
     let mut db = RootDatabase::new(lru_cap);
