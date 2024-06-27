@@ -14,7 +14,7 @@ use vfs::{AbsPathBuf, ChangeKind, VfsPath};
 
 use crate::{
     config::{Config, ConfigChange},
-    global_state::{FetchWorkspaceRequest, GlobalState},
+    global_state::{GlobalState, WorkspaceRequest},
     lsp::{from_proto, utils::apply_document_changes},
     lsp_ext::{self, RunFlycheckParams},
     mem_docs::DocumentData,
@@ -162,7 +162,7 @@ pub(crate) fn handle_did_save_text_document(
             if reload::should_refresh_for_change(path, ChangeKind::Modify, &additional_files) {
                 state.fetch_workspaces_queue.request_op(
                     format!("workspace vfs file change saved {path}"),
-                    FetchWorkspaceRequest {
+                    WorkspaceRequest::Fetch {
                         path: Some(path.to_owned()),
                         force_crate_graph_reload: false,
                     },
@@ -170,7 +170,7 @@ pub(crate) fn handle_did_save_text_document(
             } else if state.detached_files.contains(path) {
                 state.fetch_workspaces_queue.request_op(
                     format!("detached file saved {path}"),
-                    FetchWorkspaceRequest {
+                    WorkspaceRequest::Fetch {
                         path: Some(path.to_owned()),
                         force_crate_graph_reload: false,
                     },
@@ -257,7 +257,7 @@ pub(crate) fn handle_did_change_workspace_folders(
     if !config.has_linked_projects() && config.detached_files().is_empty() {
         config.rediscover_workspaces();
 
-        let req = FetchWorkspaceRequest { path: None, force_crate_graph_reload: false };
+        let req = WorkspaceRequest::Fetch { path: None, force_crate_graph_reload: false };
         state.fetch_workspaces_queue.request_op("client workspaces changed".to_owned(), req);
     }
 

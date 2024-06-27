@@ -22,7 +22,7 @@ use crate::{
     config::Config,
     diagnostics::{fetch_native_diagnostics, DiagnosticsGeneration},
     dispatch::{NotificationDispatcher, RequestDispatcher},
-    global_state::{file_id_to_url, url_to_file_id, FetchWorkspaceRequest, GlobalState},
+    global_state::{file_id_to_url, url_to_file_id, GlobalState, WorkspaceRequest},
     hack_recover_crate_name,
     lsp::{
         from_proto, to_proto,
@@ -166,9 +166,9 @@ impl GlobalState {
         }
 
         if self.config.discover_workspace_config().is_none() {
-            let req = FetchWorkspaceRequest { path: None, force_crate_graph_reload: false };
+            let req = WorkspaceRequest::Fetch { path: None, force_crate_graph_reload: false };
             self.fetch_workspaces_queue.request_op("startup".to_owned(), req);
-            if let Some((cause, FetchWorkspaceRequest { path, force_crate_graph_reload })) =
+            if let Some((cause, WorkspaceRequest::Fetch { path, force_crate_graph_reload })) =
                 self.fetch_workspaces_queue.should_start_op()
             {
                 self.fetch_workspaces(cause, path, force_crate_graph_reload);
@@ -465,7 +465,7 @@ impl GlobalState {
         if self.config.cargo_autoreload_config()
             || self.config.discover_workspace_config().is_some()
         {
-            if let Some((cause, FetchWorkspaceRequest { path, force_crate_graph_reload })) =
+            if let Some((cause, WorkspaceRequest::Fetch { path, force_crate_graph_reload })) =
                 self.fetch_workspaces_queue.should_start_op()
             {
                 self.fetch_workspaces(cause, path, force_crate_graph_reload);
@@ -686,7 +686,7 @@ impl GlobalState {
             }
             Task::DiscoverLinkedProjects(arg) => {
                 if let Some(cfg) = self.config.discover_workspace_config() {
-                    if !self.discover_workspace_queue.op_in_progress() {
+                    if !self.fetch_workspaces_queue.op_in_progress() {
                         // the clone is unfortunately necessary to avoid a borrowck error when
                         // `self.report_progress` is called later
                         let title = &cfg.progress_label.clone();
@@ -695,9 +695,11 @@ impl GlobalState {
                             flycheck::JsonWorkspace::new(self.discover_sender.clone(), command);
 
                         self.report_progress(&title, Progress::Begin, None, None, None);
-                        self.discover_workspace_queue
-                            .request_op("Discovering workspace".to_owned(), ());
-                        let _ = self.discover_workspace_queue.should_start_op();
+                        self.fetch_workspaces_queue.request_op(
+                            "Discovering workspace".to_owned(),
+                            WorkspaceRequest::Discover(()),
+                        );
+                        let _ = self.fetch_workspaces_queue.should_start_op();
 
                         let arg = match arg {
                             DiscoverProjectParam::Label(label) => JsonArguments::Label(label),
@@ -869,7 +871,7 @@ impl GlobalState {
         match message {
             flycheck::DiscoverProjectMessage::Finished(output) => {
                 self.report_progress(&title, Progress::End, None, None, None);
-                self.discover_workspace_queue.op_completed(());
+                self.fetch_workspaces_queue.op_completed(None);
 
                 let mut config = Config::clone(&*self.config);
                 config.add_linked_projects(output.project, output.buildfile);
@@ -880,7 +882,7 @@ impl GlobalState {
             }
             flycheck::DiscoverProjectMessage::Error { message, context } => {
                 let message = format!("Project discovery failed: {message}");
-                self.discover_workspace_queue.op_completed(());
+                self.fetch_workspaces_queue.op_completed(None);
                 self.show_and_log_error(message.clone(), context);
                 self.report_progress(&title, Progress::End, Some(message), None, None)
             }

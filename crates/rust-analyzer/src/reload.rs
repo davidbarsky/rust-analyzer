@@ -33,7 +33,7 @@ use vfs::{AbsPath, AbsPathBuf, ChangeKind};
 
 use crate::{
     config::{Config, FilesWatcher, LinkedProject},
-    global_state::{FetchWorkspaceRequest, GlobalState},
+    global_state::{GlobalState, WorkspaceRequest},
     lsp_ext,
     main_loop::{DiscoverProjectParam, Task},
     op_queue::Cause,
@@ -67,7 +67,6 @@ impl GlobalState {
             || self.fetch_workspaces_queue.op_in_progress()
             || self.fetch_build_data_queue.op_in_progress()
             || self.fetch_proc_macros_queue.op_in_progress()
-            || self.discover_workspace_queue.op_in_progress()
             || self.vfs_progress_config_version < self.vfs_config_version
             || self.vfs_progress_n_done < self.vfs_progress_n_total)
     }
@@ -86,7 +85,7 @@ impl GlobalState {
 
         if self.config.linked_or_discovered_projects() != old_config.linked_or_discovered_projects()
         {
-            let req = FetchWorkspaceRequest { path: None, force_crate_graph_reload: false };
+            let req = WorkspaceRequest::Fetch { path: None, force_crate_graph_reload: false };
             self.fetch_workspaces_queue.request_op("discovered projects changed".to_owned(), req)
         } else if self.config.flycheck() != old_config.flycheck() {
             self.reload_flycheck();
@@ -227,7 +226,7 @@ impl GlobalState {
                 .collect();
             let cargo_config = self.config.cargo();
             let discover_command = self.config.discover_workspace_config().cloned();
-            let is_quiescent = !(self.discover_workspace_queue.op_in_progress()
+            let is_quiescent = !(self.fetch_workspaces_queue.op_in_progress()
                 || self.vfs_progress_config_version < self.vfs_config_version
                 || self.vfs_progress_n_done < self.vfs_progress_n_total);
 
@@ -679,18 +678,12 @@ impl GlobalState {
             return Ok(());
         };
 
-        if !self.discover_workspace_queue.op_in_progress() {
-            if last_op_result.is_empty() {
-                stdx::format_to!(buf, "rust-analyzer failed to discover workspace");
-            } else {
-                for ws in last_op_result {
-                    if let Err(err) = ws {
-                        stdx::format_to!(
-                            buf,
-                            "rust-analyzer failed to load workspace: {:#}\n",
-                            err
-                        );
-                    }
+        if last_op_result.is_empty() {
+            stdx::format_to!(buf, "rust-analyzer failed to discover workspace");
+        } else {
+            for ws in last_op_result {
+                if let Err(err) = ws {
+                    stdx::format_to!(buf, "rust-analyzer failed to load workspace: {:#}\n", err);
                 }
             }
         }
