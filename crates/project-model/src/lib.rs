@@ -59,6 +59,7 @@ pub use cargo_metadata::Metadata;
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum ProjectManifest {
     ProjectJson(ManifestPath),
+    DiscoveredProjectJson(ManifestPath),
     CargoToml(ManifestPath),
     CargoScript(ManifestPath),
 }
@@ -156,6 +157,7 @@ impl ProjectManifest {
         match self {
             ProjectManifest::ProjectJson(it)
             | ProjectManifest::CargoToml(it)
+            | ProjectManifest::DiscoveredProjectJson(it)
             | ProjectManifest::CargoScript(it) => it,
         }
     }

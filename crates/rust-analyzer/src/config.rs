@@ -919,21 +919,6 @@ impl Config {
         );
         (config, e, should_update)
     }
-
-    pub fn add_linked_projects(&mut self, data: ProjectJsonData, buildfile: Utf8PathBuf) {
-        let linked_projects = &mut self.client_config.0.global.linkedProjects;
-
-        let new_project = ManifestOrProjectJson::DiscoveredProjectJson { data, buildfile };
-        match linked_projects {
-            Some(projects) => {
-                match projects.iter_mut().find(|p| p.manifest() == new_project.manifest()) {
-                    Some(p) => *p = new_project,
-                    None => projects.push(new_project),
-                }
-            }
-            None => *linked_projects = Some(vec![new_project]),
-        }
-    }
 }
 
 #[derive(Default, Debug)]
@@ -1572,9 +1557,6 @@ impl Config {
     pub fn linked_manifests(&self) -> impl Iterator<Item = &Utf8Path> + '_ {
         self.linkedProjects().iter().filter_map(|it| match it {
             ManifestOrProjectJson::Manifest(p) => Some(&**p),
-            // despite having a buildfile, using this variant as a manifest
-            // will fail.
-            ManifestOrProjectJson::DiscoveredProjectJson { .. } => None,
             ManifestOrProjectJson::ProjectJson { .. } => None,
         })
     }
@@ -1612,14 +1594,6 @@ impl Config {
                             .map_err(|e| tracing::error!("failed to load linked project: {}", e))
                             .ok()
                             .map(Into::into)
-                    }
-                    ManifestOrProjectJson::DiscoveredProjectJson { data, buildfile } => {
-                        let root: &AbsPath =
-                            buildfile.as_path().try_into().expect("unable to get AbsPathBuf");
-
-                        let root_path = root.parent().expect("Unable to get parent of buildfile");
-
-                        Some(ProjectJson::new(None, root_path, data.clone()).into())
                     }
                     ManifestOrProjectJson::ProjectJson(it) => {
                         Some(ProjectJson::new(None, &self.root_path, it.clone()).into())
@@ -2345,19 +2319,6 @@ mod single_or_array {
 enum ManifestOrProjectJson {
     Manifest(Utf8PathBuf),
     ProjectJson(ProjectJsonData),
-    DiscoveredProjectJson { data: ProjectJsonData, buildfile: Utf8PathBuf },
-}
-
-impl ManifestOrProjectJson {
-    fn manifest(&self) -> Option<&Utf8Path> {
-        match self {
-            ManifestOrProjectJson::Manifest(manifest) => Some(manifest),
-            ManifestOrProjectJson::DiscoveredProjectJson { buildfile, .. } => {
-                Some(buildfile.as_path())
-            }
-            ManifestOrProjectJson::ProjectJson(_) => None,
-        }
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

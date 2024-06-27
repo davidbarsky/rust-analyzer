@@ -33,7 +33,7 @@ use vfs::{AbsPath, AbsPathBuf, ChangeKind};
 
 use crate::{
     config::{Config, FilesWatcher, LinkedProject},
-    global_state::{GlobalState, WorkspaceRequest},
+    global_state::{GlobalState, WorkspaceRequest, WorkspaceResponse},
     lsp_ext,
     main_loop::{DiscoverProjectParam, Task},
     op_queue::Cause,
@@ -85,7 +85,7 @@ impl GlobalState {
 
         if self.config.linked_or_discovered_projects() != old_config.linked_or_discovered_projects()
         {
-            let req = WorkspaceRequest::Fetch { path: None, force_crate_graph_reload: false };
+            let req = WorkspaceRequest::Fetch { path: None, force_reload_crate_graph: false };
             self.fetch_workspaces_queue.request_op("discovered projects changed".to_owned(), req)
         } else if self.config.flycheck() != old_config.flycheck() {
             self.reload_flycheck();
@@ -226,10 +226,11 @@ impl GlobalState {
                 .collect();
             let cargo_config = self.config.cargo();
             let discover_command = self.config.discover_workspace_config().cloned();
-            let is_quiescent = !(self.fetch_workspaces_queue.op_in_progress()
+            let is_quiescent = !(self.discover_workspace_queue.op_in_progress()
                 || self.vfs_progress_config_version < self.vfs_config_version
                 || self.vfs_progress_n_done < self.vfs_progress_n_total);
 
+            let workspaces = self.workspaces.clone();
             move |sender| {
                 let progress = {
                     let sender = sender.clone();
@@ -243,25 +244,26 @@ impl GlobalState {
                 sender.send(Task::FetchWorkspace(ProjectWorkspaceProgress::Begin)).unwrap();
 
                 if let (Some(_command), Some(path)) = (&discover_command, &path) {
-                    let build = linked_projects.iter().find_map(|project| match project {
-                        LinkedProject::InlineJsonProject(it) => it.crate_by_buildfile(path),
+                    let build = workspaces.iter().find_map(|workspace| match &workspace.kind {
+                        ProjectWorkspaceKind::Json(project_json) => {
+                            project_json.crate_by_buildfile(path)
+                        }
                         _ => None,
                     });
 
                     if let Some(build) = build {
                         if is_quiescent {
                             let arg = DiscoverProjectParam::Label(build.label);
+                            dbg!("sending discover request");
                             sender.send(Task::DiscoverLinkedProjects(arg)).unwrap();
                         }
                     }
                 }
-
                 let mut workspaces = linked_projects
                     .iter()
                     .map(|project| match project {
                         LinkedProject::ProjectManifest(manifest) => {
                             debug!(path = %manifest, "loading project from manifest");
-
                             project_model::ProjectWorkspace::load(
                                 manifest.clone(),
                                 &cargo_config,
@@ -269,6 +271,7 @@ impl GlobalState {
                             )
                         }
                         LinkedProject::InlineJsonProject(it) => {
+                            debug!("loading inline json project");
                             let workspace = project_model::ProjectWorkspace::load_inline(
                                 it.clone(),
                                 cargo_config.target.as_deref(),
@@ -404,7 +407,7 @@ impl GlobalState {
         let _p = tracing::info_span!("GlobalState::switch_workspaces").entered();
         tracing::info!(%cause, "will switch workspaces");
 
-        let Some((workspaces, force_reload_crate_graph)) =
+        let Some(WorkspaceResponse { workspaces, force_reload_crate_graph }) =
             self.fetch_workspaces_queue.last_op_result()
         else {
             return;
@@ -674,14 +677,16 @@ impl GlobalState {
     pub(super) fn fetch_workspace_error(&self) -> Result<(), String> {
         let mut buf = String::new();
 
-        let Some((last_op_result, _)) = self.fetch_workspaces_queue.last_op_result() else {
+        let Some(WorkspaceResponse { workspaces, force_reload_crate_graph: _ }) =
+            self.fetch_workspaces_queue.last_op_result()
+        else {
             return Ok(());
         };
 
-        if last_op_result.is_empty() {
+        if workspaces.is_empty() {
             stdx::format_to!(buf, "rust-analyzer failed to discover workspace");
         } else {
-            for ws in last_op_result {
+            for ws in workspaces {
                 if let Err(err) = ws {
                     stdx::format_to!(buf, "rust-analyzer failed to load workspace: {:#}\n", err);
                 }

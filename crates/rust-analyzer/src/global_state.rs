@@ -41,9 +41,16 @@ use crate::{
     task_pool::{TaskPool, TaskQueue},
 };
 
+#[derive(Debug)]
 pub(crate) enum WorkspaceRequest {
     Discover(()),
-    Fetch { path: Option<AbsPathBuf>, force_crate_graph_reload: bool },
+    Fetch { path: Option<AbsPathBuf>, force_reload_crate_graph: bool },
+}
+
+#[derive(Debug)]
+pub(crate) struct WorkspaceResponse {
+    pub(crate) workspaces: Vec<anyhow::Result<ProjectWorkspace>>,
+    pub(crate) force_reload_crate_graph: bool,
 }
 
 // Enforces drop order
@@ -143,12 +150,12 @@ pub(crate) struct GlobalState {
     pub(crate) detached_files: FxHashSet<ManifestPath>,
 
     // op queues
-    pub(crate) fetch_workspaces_queue:
-        OpQueue<WorkspaceRequest, Option<(Vec<anyhow::Result<ProjectWorkspace>>, bool)>>,
+    pub(crate) fetch_workspaces_queue: OpQueue<WorkspaceRequest, Option<WorkspaceResponse>>,
     pub(crate) fetch_build_data_queue:
         OpQueue<(), (Arc<Vec<ProjectWorkspace>>, Vec<anyhow::Result<WorkspaceBuildScripts>>)>,
     pub(crate) fetch_proc_macros_queue: OpQueue<Vec<ProcMacroPaths>, bool>,
     pub(crate) prime_caches_queue: OpQueue,
+    pub(crate) discover_workspace_queue: OpQueue,
 
     /// A deferred task queue.
     ///
@@ -262,6 +269,7 @@ impl GlobalState {
             fetch_workspaces_queue: OpQueue::default(),
             fetch_build_data_queue: OpQueue::default(),
             fetch_proc_macros_queue: OpQueue::default(),
+            discover_workspace_queue: OpQueue::default(),
 
             prime_caches_queue: OpQueue::default(),
 
@@ -449,7 +457,7 @@ impl GlobalState {
                     format!("workspace vfs file change: {path}"),
                     WorkspaceRequest::Fetch {
                         path: Some(path.to_owned()),
-                        force_crate_graph_reload,
+                        force_reload_crate_graph: force_crate_graph_reload,
                     },
                 );
             }

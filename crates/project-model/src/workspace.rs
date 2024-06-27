@@ -192,7 +192,8 @@ impl ProjectWorkspace {
         progress: &dyn Fn(String),
     ) -> anyhow::Result<ProjectWorkspace> {
         let res = match manifest {
-            ProjectManifest::ProjectJson(project_json) => {
+            ProjectManifest::ProjectJson(project_json)
+            | ProjectManifest::DiscoveredProjectJson(project_json) => {
                 let file = fs::read_to_string(project_json.as_ref())
                     .with_context(|| format!("Failed to read json file {project_json}"))?;
                 let data = serde_json::from_str(&file)

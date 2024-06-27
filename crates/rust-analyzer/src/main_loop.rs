@@ -14,15 +14,18 @@ use ide_db::base_db::{SourceDatabase, SourceDatabaseExt, VfsPath};
 use lsp_server::{Connection, Notification, Request};
 use lsp_types::{notification::Notification as _, TextDocumentIdentifier, Url};
 use paths::Utf8PathBuf;
+use project_model::{ManifestPath, ProjectJson, ProjectWorkspace};
 use stdx::thread::ThreadIntent;
 use tracing::{span, Level};
-use vfs::FileId;
+use vfs::{AbsPathBuf, FileId};
 
 use crate::{
     config::Config,
     diagnostics::{fetch_native_diagnostics, DiagnosticsGeneration},
     dispatch::{NotificationDispatcher, RequestDispatcher},
-    global_state::{file_id_to_url, url_to_file_id, GlobalState, WorkspaceRequest},
+    global_state::{
+        file_id_to_url, url_to_file_id, GlobalState, WorkspaceRequest, WorkspaceResponse,
+    },
     hack_recover_crate_name,
     lsp::{
         from_proto, to_proto,
@@ -166,10 +169,15 @@ impl GlobalState {
         }
 
         if self.config.discover_workspace_config().is_none() {
-            let req = WorkspaceRequest::Fetch { path: None, force_crate_graph_reload: false };
+            let req = WorkspaceRequest::Fetch { path: None, force_reload_crate_graph: false };
             self.fetch_workspaces_queue.request_op("startup".to_owned(), req);
-            if let Some((cause, WorkspaceRequest::Fetch { path, force_crate_graph_reload })) =
-                self.fetch_workspaces_queue.should_start_op()
+            if let Some((
+                cause,
+                WorkspaceRequest::Fetch {
+                    path,
+                    force_reload_crate_graph: force_crate_graph_reload,
+                },
+            )) = self.fetch_workspaces_queue.should_start_op()
             {
                 self.fetch_workspaces(cause, path, force_crate_graph_reload);
             }
@@ -268,11 +276,9 @@ impl GlobalState {
 
         let event_dbg_msg = format!("{event:?}");
         tracing::debug!(?loop_start, ?event, "handle_event");
-        if tracing::enabled!(tracing::Level::INFO) {
+        if tracing::enabled!(tracing::Level::DEBUG) {
             let task_queue_len = self.task_pool.handle.len();
-            if task_queue_len > 0 {
-                tracing::info!("task queue len: {}", task_queue_len);
-            }
+            tracing::debug!("task queue len: {}", task_queue_len);
         }
 
         let was_quiescent = self.is_quiescent();
@@ -465,8 +471,13 @@ impl GlobalState {
         if self.config.cargo_autoreload_config()
             || self.config.discover_workspace_config().is_some()
         {
-            if let Some((cause, WorkspaceRequest::Fetch { path, force_crate_graph_reload })) =
-                self.fetch_workspaces_queue.should_start_op()
+            if let Some((
+                cause,
+                WorkspaceRequest::Fetch {
+                    path,
+                    force_reload_crate_graph: force_crate_graph_reload,
+                },
+            )) = self.fetch_workspaces_queue.should_start_op()
             {
                 self.fetch_workspaces(cause, path, force_crate_graph_reload);
             }
@@ -672,8 +683,10 @@ impl GlobalState {
                     ProjectWorkspaceProgress::Begin => (Progress::Begin, None),
                     ProjectWorkspaceProgress::Report(msg) => (Progress::Report, Some(msg)),
                     ProjectWorkspaceProgress::End(workspaces, force_reload_crate_graph) => {
-                        self.fetch_workspaces_queue
-                            .op_completed(Some((workspaces, force_reload_crate_graph)));
+                        self.fetch_workspaces_queue.op_completed(Some(WorkspaceResponse {
+                            workspaces,
+                            force_reload_crate_graph,
+                        }));
                         if let Err(e) = self.fetch_workspace_error() {
                             tracing::error!("FetchWorkspaceError:\n{e}");
                         }
@@ -686,34 +699,39 @@ impl GlobalState {
             }
             Task::DiscoverLinkedProjects(arg) => {
                 if let Some(cfg) = self.config.discover_workspace_config() {
-                    if !self.fetch_workspaces_queue.op_in_progress() {
-                        // the clone is unfortunately necessary to avoid a borrowck error when
-                        // `self.report_progress` is called later
-                        let title = &cfg.progress_label.clone();
-                        let command = cfg.command.clone();
-                        let discover =
-                            flycheck::JsonWorkspace::new(self.discover_sender.clone(), command);
+                    if !self.discover_workspace_queue.op_in_progress() {
+                        self.discover_workspace_queue
+                            .request_op("discovering projects".to_string(), ());
+                        if let Some((_cause, ())) = self.discover_workspace_queue.should_start_op()
+                        {
+                            // the clone is unfortunately necessary to avoid a borrowck error when
+                            // `self.report_progress` is called later
+                            let title = &cfg.progress_label.clone();
+                            let command = cfg.command.clone();
+                            let discover =
+                                flycheck::JsonWorkspace::new(self.discover_sender.clone(), command);
 
-                        self.report_progress(&title, Progress::Begin, None, None, None);
-                        self.fetch_workspaces_queue.request_op(
-                            "Discovering workspace".to_owned(),
-                            WorkspaceRequest::Discover(()),
-                        );
-                        let _ = self.fetch_workspaces_queue.should_start_op();
+                            self.report_progress(&title, Progress::Begin, None, None, None);
+                            self.fetch_workspaces_queue.request_op(
+                                "Discovering workspace".to_owned(),
+                                WorkspaceRequest::Discover(()),
+                            );
+                            let _ = self.fetch_workspaces_queue.should_start_op();
 
-                        let arg = match arg {
-                            DiscoverProjectParam::Label(label) => JsonArguments::Label(label),
-                            DiscoverProjectParam::Path(path) => {
-                                let path =
-                                    path.to_file_path().expect("unable to convert to PathBuf");
-                                let path = Utf8PathBuf::from_path_buf(path)
-                                    .expect("Unable to convert to Utf8PathBuf");
-                                JsonArguments::Path(path)
-                            }
-                        };
+                            let arg = match arg {
+                                DiscoverProjectParam::Label(label) => JsonArguments::Label(label),
+                                DiscoverProjectParam::Path(path) => {
+                                    let path =
+                                        path.to_file_path().expect("unable to convert to PathBuf");
+                                    let path = Utf8PathBuf::from_path_buf(path)
+                                        .expect("Unable to convert to Utf8PathBuf");
+                                    JsonArguments::Path(path)
+                                }
+                            };
 
-                        let handle = discover.spawn(arg).unwrap();
-                        self.discover_handle = Some(handle);
+                            let handle = discover.spawn(arg).unwrap();
+                            self.discover_handle = Some(handle);
+                        }
                     }
                 }
             }
@@ -871,11 +889,26 @@ impl GlobalState {
         match message {
             flycheck::DiscoverProjectMessage::Finished(output) => {
                 self.report_progress(&title, Progress::End, None, None, None);
-                self.fetch_workspaces_queue.op_completed(None);
 
-                let mut config = Config::clone(&*self.config);
-                config.add_linked_projects(output.project, output.buildfile);
-                self.update_configuration(config);
+                let manifest = AbsPathBuf::try_from(output.buildfile).unwrap();
+                let manifest = Some(ManifestPath::try_from(manifest).unwrap());
+                let project_json =
+                    ProjectJson::new(manifest, &self.config.root_path(), output.project);
+
+                let cargo_config = self.config.cargo();
+                let workspace = ProjectWorkspace::load_inline(
+                    project_json,
+                    cargo_config.target.as_deref(),
+                    &cargo_config.extra_env,
+                    &cargo_config.cfg_overrides,
+                );
+                let workspaces = vec![Ok(workspace)];
+                self.fetch_workspaces_queue.op_completed(Some(WorkspaceResponse {
+                    workspaces,
+                    force_reload_crate_graph: true,
+                }));
+                self.discover_workspace_queue.op_completed(());
+                self.switch_workspaces("fetched workspace".to_owned());
             }
             flycheck::DiscoverProjectMessage::Progress { message } => {
                 self.report_progress(&title, Progress::Report, Some(message), None, None)
@@ -883,6 +916,7 @@ impl GlobalState {
             flycheck::DiscoverProjectMessage::Error { message, context } => {
                 let message = format!("Project discovery failed: {message}");
                 self.fetch_workspaces_queue.op_completed(None);
+                self.discover_workspace_queue.op_completed(());
                 self.show_and_log_error(message.clone(), context);
                 self.report_progress(&title, Progress::End, Some(message), None, None)
             }
