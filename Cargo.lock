@@ -101,7 +101,7 @@ dependencies = [
  "lz4_flex",
  "rustc-hash 2.0.0",
  "salsa 0.0.0",
- "salsa 0.18.0 (git+https://github.com/salsa-rs/salsa.git?rev=e4d36daf2dc4a096009753b6e326cf44e6c6e18a)",
+ "salsa 0.18.0",
  "semver",
  "span",
  "stdx",
@@ -387,11 +387,12 @@ dependencies = [
 [[package]]
 name = "db-ext-macro"
 version = "0.1.0"
+source = "git+https://github.com/davidbarsky/db-ext-macro.git?rev=366ca1c4ab1f691fdba66be39fed403322ddb914#366ca1c4ab1f691fdba66be39fed403322ddb914"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
  "quote",
- "salsa 0.18.0 (git+https://github.com/salsa-rs/salsa.git)",
+ "salsa 0.18.0",
  "syn",
  "synstructure",
 ]
@@ -688,7 +689,7 @@ dependencies = [
  "mbe",
  "parser",
  "rustc-hash 2.0.0",
- "salsa 0.18.0 (git+https://github.com/salsa-rs/salsa.git?rev=e4d36daf2dc4a096009753b6e326cf44e6c6e18a)",
+ "salsa 0.18.0",
  "smallvec",
  "span",
  "stdx",
@@ -846,7 +847,7 @@ dependencies = [
  "profile",
  "rayon",
  "rustc-hash 2.0.0",
- "salsa 0.18.0 (git+https://github.com/salsa-rs/salsa.git?rev=e4d36daf2dc4a096009753b6e326cf44e6c6e18a)",
+ "salsa 0.18.0",
  "span",
  "stdx",
  "syntax",
@@ -1870,7 +1871,7 @@ dependencies = [
 [[package]]
 name = "salsa"
 version = "0.18.0"
-source = "git+https://github.com/salsa-rs/salsa.git?rev=e4d36daf2dc4a096009753b6e326cf44e6c6e18a#e4d36daf2dc4a096009753b6e326cf44e6c6e18a"
+source = "git+https://github.com/davidbarsky/salsa.git?rev=c2ce00d51ab2468e9098b8da825192ef89061086#c2ce00d51ab2468e9098b8da825192ef89061086"
 dependencies = [
  "append-only-vec",
  "arc-swap",
@@ -1881,28 +1882,8 @@ dependencies = [
  "lazy_static",
  "parking_lot",
  "rustc-hash 2.0.0",
- "salsa-macro-rules 0.1.0 (git+https://github.com/salsa-rs/salsa.git?rev=e4d36daf2dc4a096009753b6e326cf44e6c6e18a)",
- "salsa-macros 0.18.0 (git+https://github.com/salsa-rs/salsa.git?rev=e4d36daf2dc4a096009753b6e326cf44e6c6e18a)",
- "smallvec",
- "tracing",
-]
-
-[[package]]
-name = "salsa"
-version = "0.18.0"
-source = "git+https://github.com/salsa-rs/salsa.git#dfbe6d67f47c67387a649e71ebeea22c313d43bf"
-dependencies = [
- "append-only-vec",
- "arc-swap",
- "crossbeam",
- "dashmap 6.1.0",
- "hashlink",
- "indexmap",
- "lazy_static",
- "parking_lot",
- "rustc-hash 2.0.0",
- "salsa-macro-rules 0.1.0 (git+https://github.com/salsa-rs/salsa.git)",
- "salsa-macros 0.18.0 (git+https://github.com/salsa-rs/salsa.git)",
+ "salsa-macro-rules",
+ "salsa-macros 0.18.0",
  "smallvec",
  "tracing",
 ]
@@ -1910,12 +1891,7 @@ dependencies = [
 [[package]]
 name = "salsa-macro-rules"
 version = "0.1.0"
-source = "git+https://github.com/salsa-rs/salsa.git?rev=e4d36daf2dc4a096009753b6e326cf44e6c6e18a#e4d36daf2dc4a096009753b6e326cf44e6c6e18a"
-
-[[package]]
-name = "salsa-macro-rules"
-version = "0.1.0"
-source = "git+https://github.com/salsa-rs/salsa.git#dfbe6d67f47c67387a649e71ebeea22c313d43bf"
+source = "git+https://github.com/davidbarsky/salsa.git?rev=c2ce00d51ab2468e9098b8da825192ef89061086#c2ce00d51ab2468e9098b8da825192ef89061086"
 
 [[package]]
 name = "salsa-macros"
@@ -1930,19 +1906,7 @@ dependencies = [
 [[package]]
 name = "salsa-macros"
 version = "0.18.0"
-source = "git+https://github.com/salsa-rs/salsa.git?rev=e4d36daf2dc4a096009753b6e326cf44e6c6e18a#e4d36daf2dc4a096009753b6e326cf44e6c6e18a"
-dependencies = [
- "heck 0.5.0",
- "proc-macro2",
- "quote",
- "syn",
- "synstructure",
-]
-
-[[package]]
-name = "salsa-macros"
-version = "0.18.0"
-source = "git+https://github.com/salsa-rs/salsa.git#dfbe6d67f47c67387a649e71ebeea22c313d43bf"
+source = "git+https://github.com/davidbarsky/salsa.git?rev=c2ce00d51ab2468e9098b8da825192ef89061086#c2ce00d51ab2468e9098b8da825192ef89061086"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
