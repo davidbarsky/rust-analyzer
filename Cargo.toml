@@ -136,7 +136,7 @@ process-wrap = { version = "8.0.2", features = ["std"] }
 pulldown-cmark-to-cmark = "10.0.4"
 pulldown-cmark = { version = "0.9.0", default-features = false }
 rayon = "1.8.0"
-salsa = { git = "https://github.com/davidbarsky/salsa.git", rev = "c2ce00d51ab2468e9098b8da825192ef89061086" }
+salsa = { git = "https://github.com/davidbarsky/salsa.git", rev = "0f379579fc9f47acc4e1f16aa3a416673c598dcd" }
 db-ext-macro = { git = "https://github.com/davidbarsky/db-ext-macro.git", rev = "366ca1c4ab1f691fdba66be39fed403322ddb914" }
 # db-ext-macro = { path = "../db-ext-macro" }
 # salsa = { path = "../salsa" }
