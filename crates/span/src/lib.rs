@@ -1,8 +1,6 @@
 //! File and span related types.
 use std::fmt::{self, Write};
 
-use ra_salsa::InternId;
-
 mod ast_id;
 mod hygiene;
 mod map;
@@ -332,7 +330,9 @@ impl HirFileId {
         match self.0 & Self::MACRO_FILE_TAG_MASK {
             0 => None,
             _ => Some(MacroFileId {
-                macro_call_id: MacroCallId(InternId::from(self.0 ^ Self::MACRO_FILE_TAG_MASK)),
+                macro_call_id: MacroCallId(ra_salsa::InternId::from(
+                    self.0 ^ Self::MACRO_FILE_TAG_MASK,
+                )),
             }),
         }
     }
@@ -350,7 +350,9 @@ impl HirFileId {
         match self.0 & Self::MACRO_FILE_TAG_MASK {
             0 => HirFileIdRepr::FileId(EditionedFileId(self.0)),
             _ => HirFileIdRepr::MacroFile(MacroFileId {
-                macro_call_id: MacroCallId(InternId::from(self.0 ^ Self::MACRO_FILE_TAG_MASK)),
+                macro_call_id: MacroCallId(ra_salsa::InternId::from(
+                    self.0 ^ Self::MACRO_FILE_TAG_MASK,
+                )),
             }),
         }
     }
