@@ -139,6 +139,7 @@ pub trait ExpandDatabase: SourceDatabase {
     fn syntax_context(&self, file: HirFileId) -> SyntaxContextId;
 }
 
+// adding a comment
 fn syntax_context(db: &dyn ExpandDatabase, file: HirFileId) -> SyntaxContextId {
     match file.repr() {
         HirFileIdRepr::FileId(_) => SyntaxContextId::ROOT,
