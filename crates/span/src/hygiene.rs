@@ -30,7 +30,7 @@ use crate::MacroCallId;
 
 /// Interned [`SyntaxContextData`].
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SyntaxContextId(InternId);
+pub struct SyntaxContextId(ra_salsa::InternId);
 
 impl fmt::Debug for SyntaxContextId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -60,7 +60,7 @@ impl fmt::Display for SyntaxContextId {
 
 impl SyntaxContextId {
     /// The root context, which is the parent of all other contexts. All [`FileId`]s have this context.
-    pub const ROOT: Self = SyntaxContextId(unsafe { InternId::new_unchecked(0) });
+    pub const ROOT: Self = SyntaxContextId(unsafe { ra_salsa::InternId::new_unchecked(0) });
 
     pub fn is_root(self) -> bool {
         self == Self::ROOT
@@ -75,7 +75,7 @@ impl SyntaxContextId {
     /// Constructs a `SyntaxContextId` from a raw `u32`.
     /// This should only be used for serialization purposes for the proc-macro server.
     pub fn from_u32(u32: u32) -> Self {
-        Self(InternId::from(u32))
+        Self(ra_salsa::InternId::from(u32))
     }
 }
 
@@ -112,7 +112,10 @@ impl std::fmt::Debug for SyntaxContextData {
             .field("outer_transparency", &self.outer_transparency)
             .field("parent", &self.parent)
             .field("opaque", &self.opaque)
-            .field("opaque_and_semitransparent", &self.opaque_and_semitransparent)
+            .field(
+                "opaque_and_semitransparent",
+                &self.opaque_and_semitransparent,
+            )
             .finish()
     }
 }
