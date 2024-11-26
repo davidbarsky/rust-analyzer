@@ -101,7 +101,7 @@ dependencies = [
  "lz4_flex",
  "rustc-hash 2.0.0",
  "salsa 0.0.0",
- "salsa 0.18.0 (git+https://github.com/davidbarsky/salsa.git?rev=0f379579fc9f47acc4e1f16aa3a416673c598dcd)",
+ "salsa 0.18.0",
  "semver",
  "span",
  "stdx",
@@ -387,12 +387,11 @@ dependencies = [
 [[package]]
 name = "db-ext-macro"
 version = "0.1.0"
-source = "git+https://github.com/davidbarsky/db-ext-macro.git?rev=366ca1c4ab1f691fdba66be39fed403322ddb914#366ca1c4ab1f691fdba66be39fed403322ddb914"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
  "quote",
- "salsa 0.18.0 (git+https://github.com/davidbarsky/salsa.git?rev=c2ce00d51ab2468e9098b8da825192ef89061086)",
+ "salsa 0.18.0",
  "syn",
  "synstructure",
 ]
@@ -689,7 +688,7 @@ dependencies = [
  "mbe",
  "parser",
  "rustc-hash 2.0.0",
- "salsa 0.18.0 (git+https://github.com/davidbarsky/salsa.git?rev=0f379579fc9f47acc4e1f16aa3a416673c598dcd)",
+ "salsa 0.18.0",
  "smallvec",
  "span",
  "stdx",
@@ -847,7 +846,7 @@ dependencies = [
  "profile",
  "rayon",
  "rustc-hash 2.0.0",
- "salsa 0.18.0 (git+https://github.com/davidbarsky/salsa.git?rev=0f379579fc9f47acc4e1f16aa3a416673c598dcd)",
+ "salsa 0.18.0",
  "span",
  "stdx",
  "syntax",
@@ -1871,7 +1870,7 @@ dependencies = [
 [[package]]
 name = "salsa"
 version = "0.18.0"
-source = "git+https://github.com/davidbarsky/salsa.git?rev=0f379579fc9f47acc4e1f16aa3a416673c598dcd#0f379579fc9f47acc4e1f16aa3a416673c598dcd"
+source = "git+https://github.com/davidbarsky/salsa.git?rev=d609b9ba7c61a1ed7c09142fa5ded6e0ceddb174#d609b9ba7c61a1ed7c09142fa5ded6e0ceddb174"
 dependencies = [
  "append-only-vec",
  "arc-swap",
@@ -1883,28 +1882,8 @@ dependencies = [
  "parking_lot",
  "rayon",
  "rustc-hash 2.0.0",
- "salsa-macro-rules 0.1.0 (git+https://github.com/davidbarsky/salsa.git?rev=0f379579fc9f47acc4e1f16aa3a416673c598dcd)",
- "salsa-macros 0.18.0 (git+https://github.com/davidbarsky/salsa.git?rev=0f379579fc9f47acc4e1f16aa3a416673c598dcd)",
- "smallvec",
- "tracing",
-]
-
-[[package]]
-name = "salsa"
-version = "0.18.0"
-source = "git+https://github.com/davidbarsky/salsa.git?rev=c2ce00d51ab2468e9098b8da825192ef89061086#c2ce00d51ab2468e9098b8da825192ef89061086"
-dependencies = [
- "append-only-vec",
- "arc-swap",
- "crossbeam",
- "dashmap 6.1.0",
- "hashlink",
- "indexmap",
- "lazy_static",
- "parking_lot",
- "rustc-hash 2.0.0",
- "salsa-macro-rules 0.1.0 (git+https://github.com/davidbarsky/salsa.git?rev=c2ce00d51ab2468e9098b8da825192ef89061086)",
- "salsa-macros 0.18.0 (git+https://github.com/davidbarsky/salsa.git?rev=c2ce00d51ab2468e9098b8da825192ef89061086)",
+ "salsa-macro-rules",
+ "salsa-macros 0.18.0",
  "smallvec",
  "tracing",
 ]
@@ -1912,12 +1891,7 @@ dependencies = [
 [[package]]
 name = "salsa-macro-rules"
 version = "0.1.0"
-source = "git+https://github.com/davidbarsky/salsa.git?rev=0f379579fc9f47acc4e1f16aa3a416673c598dcd#0f379579fc9f47acc4e1f16aa3a416673c598dcd"
-
-[[package]]
-name = "salsa-macro-rules"
-version = "0.1.0"
-source = "git+https://github.com/davidbarsky/salsa.git?rev=c2ce00d51ab2468e9098b8da825192ef89061086#c2ce00d51ab2468e9098b8da825192ef89061086"
+source = "git+https://github.com/davidbarsky/salsa.git?rev=d609b9ba7c61a1ed7c09142fa5ded6e0ceddb174#d609b9ba7c61a1ed7c09142fa5ded6e0ceddb174"
 
 [[package]]
 name = "salsa-macros"
@@ -1932,19 +1906,7 @@ dependencies = [
 [[package]]
 name = "salsa-macros"
 version = "0.18.0"
-source = "git+https://github.com/davidbarsky/salsa.git?rev=0f379579fc9f47acc4e1f16aa3a416673c598dcd#0f379579fc9f47acc4e1f16aa3a416673c598dcd"
-dependencies = [
- "heck 0.5.0",
- "proc-macro2",
- "quote",
- "syn",
- "synstructure",
-]
-
-[[package]]
-name = "salsa-macros"
-version = "0.18.0"
-source = "git+https://github.com/davidbarsky/salsa.git?rev=c2ce00d51ab2468e9098b8da825192ef89061086#c2ce00d51ab2468e9098b8da825192ef89061086"
+source = "git+https://github.com/davidbarsky/salsa.git?rev=d609b9ba7c61a1ed7c09142fa5ded6e0ceddb174#d609b9ba7c61a1ed7c09142fa5ded6e0ceddb174"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
@@ -2084,6 +2046,7 @@ dependencies = [
  "la-arena 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "rustc-hash 2.0.0",
  "salsa 0.0.0",
+ "salsa 0.18.0",
  "stdx",
  "syntax",
  "text-size",

@@ -1,7 +1,7 @@
 //! Defines a unit of change that can applied to the database to get the next
 //! state. Changes are transactional.
 use base_db::{
-    ra_salsa::Durability, CrateGraph, CrateId, CrateWorkspaceData, FileChange, SourceRoot,
+    CrateGraph, CrateId, CrateWorkspaceData, FileChange, SourceRoot,
     SourceRootDatabase,
 };
 use rustc_hash::FxHashMap;
@@ -24,7 +24,7 @@ impl ChangeWithProcMacros {
     pub fn apply(self, db: &mut (impl ExpandDatabase + SourceRootDatabase)) {
         self.source_change.apply(db);
         if let Some(proc_macros) = self.proc_macros {
-            db.set_proc_macros_with_durability(Arc::new(proc_macros), Durability::HIGH);
+            db.set_proc_macros_with_durability(Arc::new(proc_macros), salsa::Durability::HIGH);
         }
     }
 

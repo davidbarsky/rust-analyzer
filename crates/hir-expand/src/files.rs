@@ -9,7 +9,7 @@ use span::{
 use syntax::{AstNode, AstPtr, SyntaxNode, SyntaxNodePtr, SyntaxToken, TextRange, TextSize};
 
 use crate::{
-    db::{self, ExpandDatabase},
+    db::{self, parse_or_expand, ExpandDatabase},
     map_node_range_up, map_node_range_up_rooted, span_for_offset, MacroFileIdExt,
 };
 
@@ -65,13 +65,16 @@ pub type AstId<N> = crate::InFile<FileAstId<N>>;
 
 impl<N: AstIdNode> AstId<N> {
     pub fn to_node(&self, db: &dyn ExpandDatabase) -> N {
-        self.to_ptr(db).to_node(&db.parse_or_expand(self.file_id))
+        self.to_ptr(db).to_node(&parse_or_expand(db, self.file_id))
     }
     pub fn to_range(&self, db: &dyn ExpandDatabase) -> TextRange {
         self.to_ptr(db).text_range()
     }
     pub fn to_in_file_node(&self, db: &dyn ExpandDatabase) -> crate::InFile<N> {
-        crate::InFile::new(self.file_id, self.to_ptr(db).to_node(&db.parse_or_expand(self.file_id)))
+        crate::InFile::new(
+            self.file_id,
+            self.to_ptr(db).to_node(&parse_or_expand(db, self.file_id)),
+        )
     }
     pub fn to_ptr(&self, db: &dyn ExpandDatabase) -> AstPtr<N> {
         db.ast_id_map(self.file_id).get(self.value)
@@ -169,7 +172,7 @@ impl FileIdToSyntax for MacroFileId {
 }
 impl FileIdToSyntax for HirFileId {
     fn file_syntax(self, db: &dyn db::ExpandDatabase) -> SyntaxNode {
-        db.parse_or_expand(self)
+        parse_or_expand(db, self)
     }
 }
 
@@ -214,8 +217,7 @@ impl<SN: Borrow<SyntaxNode>> InFile<SN> {
     ) -> impl Iterator<Item = InFile<SyntaxNode>> + '_ {
         let succ = move |node: &InFile<SyntaxNode>| match node.value.parent() {
             Some(parent) => Some(node.with_value(parent)),
-            None => db
-                .lookup_intern_macro_call(node.file_id.macro_file()?.macro_call_id)
+            None => db.lookup_intern_macro_call(node.file_id.macro_file()?.macro_call_id)
                 .to_node_item(db)
                 .syntax()
                 .cloned()
@@ -231,8 +233,7 @@ impl<SN: Borrow<SyntaxNode>> InFile<SN> {
     ) -> impl Iterator<Item = InFile<SyntaxNode>> + '_ {
         let succ = move |node: &InFile<SyntaxNode>| match node.value.parent() {
             Some(parent) => Some(node.with_value(parent)),
-            None => db
-                .lookup_intern_macro_call(node.file_id.macro_file()?.macro_call_id)
+            None => db.lookup_intern_macro_call(node.file_id.macro_file()?.macro_call_id)
                 .to_node_item(db)
                 .syntax()
                 .cloned()
@@ -380,7 +381,7 @@ impl InFile<TextRange> {
     ) -> (FileRange, SyntaxContextId) {
         match self.file_id.repr() {
             HirFileIdRepr::FileId(file_id) => {
-                (FileRange { file_id, range: self.value }, SyntaxContextId::ROOT)
+                (FileRange { file_id, range: self.value }, span::SyntaxContextId::ROOT)
             }
             HirFileIdRepr::MacroFile(mac_file) => {
                 match map_node_range_up(db, &db.expansion_span_map(mac_file), self.value) {
