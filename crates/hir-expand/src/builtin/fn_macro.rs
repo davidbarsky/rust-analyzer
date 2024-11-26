@@ -1,11 +1,14 @@
 //! Builtin macro
 
-use base_db::AnchoredPath;
+use base_db::{AnchoredPath, FileLoader};
 use cfg::CfgExpr;
 use either::Either;
-use intern::{sym, Symbol};
+use intern::{
+    sym::{self},
+    Symbol,
+};
 use mbe::{expect_fragment, DelimiterKind};
-use span::{Edition, EditionedFileId, Span};
+use span::{Edition, EditionedFileId, FileId, Span};
 use stdx::format_to;
 use syntax::{
     format_smolstr,
@@ -15,12 +18,12 @@ use syntax_bridge::syntax_node_to_token_tree;
 
 use crate::{
     builtin::quote::{dollar_crate, quote},
-    db::ExpandDatabase,
+    db::{self, ExpandDatabase},
     hygiene::{span_with_call_site_ctxt, span_with_def_site_ctxt},
     name,
     span_map::SpanMap,
     tt::{self, DelimSpan},
-    ExpandError, ExpandResult, HirFileIdExt, Lookup as _, MacroCallId,
+    ExpandError, ExpandResult, HirFileIdExt, MacroCallId,
 };
 
 macro_rules! register_builtin {
@@ -236,7 +239,7 @@ fn assert_expand(
     let cond = expect_fragment(
         &mut iter,
         parser::PrefixEntryPoint::Expr,
-        db.crate_graph()[id.lookup(db).krate].edition,
+        db.crate_graph()[db.lookup_intern_macro_call(id).krate].edition,
         tt::DelimSpan { open: tt.delimiter.open, close: tt.delimiter.close },
     );
     _ = iter.expect_char(',');
@@ -420,7 +423,7 @@ fn use_panic_2021(db: &dyn ExpandDatabase, span: Span) -> bool {
         let Some(expn) = db.lookup_intern_syntax_context(span.ctx).outer_expn else {
             break false;
         };
-        let expn = db.lookup_intern_macro_call(expn);
+        let expn = db.lookup_intern_macro_call( expn);
         // FIXME: Record allow_internal_unstable in the macro def (not been done yet because it
         // would consume quite a bit extra memory for all call locs...)
         // if let Some(features) = expn.def.allow_internal_unstable {
@@ -671,12 +674,13 @@ fn relative_file(
     allow_recursion: bool,
     err_span: Span,
 ) -> Result<EditionedFileId, ExpandError> {
-    let lookup = call_id.lookup(db);
+    let lookup = db.lookup_intern_macro_call(call_id);
     let call_site = lookup.kind.file_id().original_file_respecting_includes(db).file_id();
     let path = AnchoredPath { anchor: call_site, path: path_str };
-    let res = db
-        .resolve_path(path)
-        .ok_or_else(|| ExpandError::other(err_span, format!("failed to load file `{path_str}`")))?;
+    // let res = db
+    //     .resolve_path(path)
+    //     .ok_or_else(|| ExpandError::other(err_span, format!("failed to load file `{path_str}`")))?;
+    let res: FileId = todo!();
     // Prevent include itself
     if res == call_site && !allow_recursion {
         Err(ExpandError::other(err_span, format!("recursive inclusion of `{path_str}`")))
@@ -804,7 +808,7 @@ fn include_str_expand(
     };
 
     let text = db.file_text(file_id.file_id());
-    let text = &*text;
+    let text = &*text.text(db);
 
     ExpandResult::ok(quote!(span =>#text))
 }

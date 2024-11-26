@@ -380,7 +380,7 @@ impl InFile<TextRange> {
     ) -> (FileRange, SyntaxContextId) {
         match self.file_id.repr() {
             HirFileIdRepr::FileId(file_id) => {
-                (FileRange { file_id, range: self.value }, SyntaxContextId::ROOT)
+                (FileRange { file_id, range: self.value }, span::SyntaxContextId::ROOT)
             }
             HirFileIdRepr::MacroFile(mac_file) => {
                 match map_node_range_up(db, &db.expansion_span_map(mac_file), self.value) {

@@ -21,7 +21,7 @@ use hir_expand::{
     db::ExpandDatabase,
     proc_macro::{ProcMacro, ProcMacroExpander, ProcMacroExpansionError, ProcMacroKind},
     span_map::SpanMapRef,
-    InFile, MacroFileId, MacroFileIdExt,
+    InFile, MacroFile, MacroFileIdExt,
 };
 use intern::Symbol;
 use span::{Edition, Span};
