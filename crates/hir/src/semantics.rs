@@ -28,7 +28,7 @@ use hir_expand::{
     hygiene::SyntaxContextExt as _,
     inert_attr_macro::find_builtin_attr_idx,
     name::AsName,
-    FileRange, InMacroFile, MacroCallId, MacroFileId, MacroFileIdExt,
+    FileRange, InMacroFile, MacroCallId, MacroFile, MacroFileIdExt,
 };
 use intern::Symbol;
 use itertools::Itertools;
