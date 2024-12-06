@@ -59,7 +59,7 @@ pub(crate) fn flip_comma(acc: &mut Assists, ctx: &AssistContext<'_>) -> Option<(
             };
         prev_range = TextRange::new(prev_start, prev_end);
         next_range = TextRange::new(next_start, next_end);
-        let file_text = ctx.db().file_text(ctx.file_id().file_id());
+        let file_text = ctx.db().file_text(ctx.file_id().file_id()).text(ctx.db());
         prev_text = file_text[prev_range].to_owned();
         next_text = file_text[next_range].to_owned();
     }

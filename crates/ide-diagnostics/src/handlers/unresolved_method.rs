@@ -1,4 +1,4 @@
-use hir::{db::ExpandDatabase, AssocItem, FileRange, HirDisplay, InFile};
+use hir::{AssocItem, FileRange, HirDisplay, InFile};
 use ide_db::text_edit::TextEdit;
 use ide_db::{
     assists::{Assist, AssistId, AssistKind},
@@ -83,7 +83,7 @@ fn field_fix(
         return None;
     }
     let expr_ptr = &d.expr;
-    let root = ctx.sema.db.parse_or_expand(expr_ptr.file_id);
+    let root = hir::parse_or_expand(ctx.sema.db, expr_ptr.file_id);
     let expr = expr_ptr.value.to_node(&root);
     let (file_id, range) = match expr {
         ast::Expr::MethodCallExpr(mcall) => {
@@ -116,7 +116,7 @@ fn assoc_func_fix(ctx: &DiagnosticsContext<'_>, d: &hir::UnresolvedMethodCall) -
         let db = ctx.sema.db;
 
         let expr_ptr = &d.expr;
-        let root = db.parse_or_expand(expr_ptr.file_id);
+        let root = hir::parse_or_expand(ctx.sema.db, expr_ptr.file_id);
         let expr: ast::Expr = expr_ptr.value.to_node(&root);
 
         let call = ast::MethodCallExpr::cast(expr.syntax().clone())?;

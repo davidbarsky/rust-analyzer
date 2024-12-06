@@ -15,7 +15,10 @@
 
 mod on_enter;
 
-use ide_db::{base_db::SourceDatabase, FilePosition, RootDatabase};
+use ide_db::{
+    base_db::{RootQueryDb, SourceDatabase},
+    FilePosition, RootDatabase,
+};
 use span::EditionedFileId;
 use syntax::{
     algo::{ancestors_at_offset, find_node_at_offset},

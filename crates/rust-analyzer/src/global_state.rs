@@ -8,7 +8,7 @@ use std::{ops::Not as _, time::Instant};
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use hir::ChangeWithProcMacros;
 use ide::{Analysis, AnalysisHost, Cancellable, FileId, SourceRootId};
-use ide_db::base_db::{CrateId, ProcMacroPaths, SourceDatabase, SourceRootDatabase};
+use ide_db::base_db::{CrateId, ProcMacroPaths, SourceDatabase};
 use itertools::Itertools;
 use load_cargo::SourceRootConfig;
 use lsp_types::{SemanticTokens, Url};
@@ -412,27 +412,28 @@ impl GlobalState {
 
                 for (file_id, (_change_kind, vfs_path)) in modified_ratoml_files {
                     if vfs_path.as_path() == user_config_path {
-                        change.change_user_config(Some(db.file_text(file_id)));
+                        change.change_user_config(Some(db.file_text(file_id).text(db)));
                         continue;
                     }
 
                     // If change has been made to a ratoml file that
                     // belongs to a non-local source root, we will ignore it.
-                    let sr_id = db.file_source_root(file_id);
-                    let sr = db.source_root(sr_id);
+                    let source_root_input = db.source_root(file_id);
+                    let source_root = source_root_input.source_root(db);
+                    let source_root_id = source_root_input.source_root_id(db);
 
-                    if !sr.is_library {
+                    if !source_root.is_library {
                         let entry = if workspace_ratoml_paths.contains(&vfs_path) {
                             change.change_workspace_ratoml(
-                                sr_id,
+                                source_root_id,
                                 vfs_path.clone(),
-                                Some(db.file_text(file_id)),
+                                Some(db.file_text(file_id).text(db)),
                             )
                         } else {
                             change.change_ratoml(
-                                sr_id,
+                                source_root_id,
                                 vfs_path.clone(),
-                                Some(db.file_text(file_id)),
+                                Some(db.file_text(file_id).text(db)),
                             )
                         };
 
@@ -443,10 +444,14 @@ impl GlobalState {
                                 // Put the old one back in.
                                 match kind {
                                     RatomlFileKind::Crate => {
-                                        change.change_ratoml(sr_id, old_path, old_text);
+                                        change.change_ratoml(source_root_id, old_path, old_text);
                                     }
                                     RatomlFileKind::Workspace => {
-                                        change.change_workspace_ratoml(sr_id, old_path, old_text);
+                                        change.change_workspace_ratoml(
+                                            source_root_id,
+                                            old_path,
+                                            old_text,
+                                        );
                                     }
                                 }
                             }

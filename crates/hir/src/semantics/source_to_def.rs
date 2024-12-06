@@ -85,6 +85,7 @@
 //! active crate for a given position, and then provide an API to resolve all
 //! syntax nodes against this specific crate.
 
+use base_db::{FileLoader as _, RootQueryDb, Upcast};
 use either::Either;
 use hir_def::{
     dyn_map::{
@@ -99,11 +100,11 @@ use hir_def::{
 };
 use hir_expand::{
     attrs::AttrId, name::AsName, ExpansionInfo, HirFileId, HirFileIdExt, InMacroFile, MacroCallId,
-    MacroFileIdExt,
+    MacroFileId, MacroFileIdExt,
 };
 use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
-use span::{EditionedFileId, FileId, MacroFileId};
+use span::{EditionedFileId, FileId};
 use stdx::impl_from;
 use syntax::{
     ast::{self, HasName},
@@ -133,7 +134,7 @@ impl SourceToDefCache {
             return m;
         }
         self.included_file_cache.insert(file, None);
-        for &crate_id in db.relevant_crates(file.into()).iter() {
+        for &crate_id in Upcast::<dyn RootQueryDb>::upcast(db).relevant_crates(file.into()).iter() {
             db.include_macro_invoc(crate_id).iter().for_each(|&(macro_call_id, file_id)| {
                 self.included_file_cache.insert(file_id, Some(MacroFileId { macro_call_id }));
             });
@@ -167,7 +168,10 @@ impl SourceToDefCtx<'_, '_> {
         let _p = tracing::info_span!("SourceToDefCtx::file_to_def").entered();
         self.cache.file_to_def_cache.entry(file).or_insert_with(|| {
             let mut mods = SmallVec::new();
-            for &crate_id in self.db.relevant_crates(file).iter() {
+
+            for &crate_id in
+                Upcast::<dyn RootQueryDb>::upcast(self.db).relevant_crates(file.into()).iter()
+            {
                 // Note: `mod` declarations in block modules cannot be supported here
                 let crate_def_map = self.db.crate_def_map(crate_id);
                 let n_mods = mods.len();
@@ -329,7 +333,7 @@ impl SourceToDefCtx<'_, '_> {
             })
             .position(|it| it == *src.value)?;
         let container = self.find_pat_or_label_container(src.syntax_ref())?;
-        let (_, source_map) = self.db.body_with_source_map(container);
+        let source_map = self.db.body_with_source_map(container).source_map;
         let expr = source_map.node_expr(src.with_value(&ast::Expr::AsmExpr(asm)))?.as_expr()?;
         Some(InlineAsmOperand { owner: container, expr, index })
     }
@@ -339,7 +343,8 @@ impl SourceToDefCtx<'_, '_> {
         src: InFile<&ast::IdentPat>,
     ) -> Option<(DefWithBodyId, BindingId)> {
         let container = self.find_pat_or_label_container(src.syntax_ref())?;
-        let (body, source_map) = self.db.body_with_source_map(container);
+        let res = self.db.body_with_source_map(container);
+        let (body, source_map) = (res.body, res.source_map);
         let src = src.cloned().map(ast::Pat::from);
         let pat_id = source_map.node_pat(src.as_ref())?;
         // the pattern could resolve to a constant, verify that this is not the case
@@ -362,7 +367,8 @@ impl SourceToDefCtx<'_, '_> {
         src: InFile<&ast::Label>,
     ) -> Option<(DefWithBodyId, LabelId)> {
         let container = self.find_pat_or_label_container(src.syntax_ref())?;
-        let (_body, source_map) = self.db.body_with_source_map(container);
+        let source_map = self.db.body_with_source_map(container).source_map;
+
         let label_id = source_map.node_label(src)?;
         Some((container, label_id))
     }
@@ -373,7 +379,8 @@ impl SourceToDefCtx<'_, '_> {
     ) -> Option<(DefWithBodyId, LabelId)> {
         let break_or_continue = ast::Expr::cast(src.value.syntax().parent()?)?;
         let container = self.find_pat_or_label_container(src.syntax_ref())?;
-        let (body, source_map) = self.db.body_with_source_map(container);
+        let res = self.db.body_with_source_map(container);
+        let (body, source_map) = (res.body, res.source_map);
         let break_or_continue =
             source_map.node_expr(src.with_value(&break_or_continue))?.as_expr()?;
         let (Expr::Break { label, .. } | Expr::Continue { label }) = body[break_or_continue] else {
