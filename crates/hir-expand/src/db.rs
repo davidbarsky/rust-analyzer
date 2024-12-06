@@ -6,7 +6,7 @@ use limit::Limit;
 use mbe::MatchedArmIndex;
 use rustc_hash::FxHashSet;
 use salsa::plumbing::AsId;
-use span::{AstIdMap, EditionedFileId, HirFileId, HirFileIdRepr, MacroFileId, Span};
+use span::{AstIdMap, EditionedFileId, HirFileId, HirFileIdRepr, MacroFileId, Span, SyntaxContextData};
 use syntax::{ast, AstNode, Parse, SyntaxElement, SyntaxError, SyntaxNode, SyntaxToken, T};
 use syntax_bridge::{syntax_node_to_token_tree, DocCommentDesugarMode};
 use triomphe::Arc;
@@ -773,6 +773,6 @@ fn check_tt_count(tt: &tt::TopSubtree) -> Result<(), ExpandResult<()>> {
     }
 }
 
-fn setup_syntax_context_root(db: &dyn ExpandDatabase) {
+pub fn setup_syntax_context_root(db: &dyn ExpandDatabase) {
     db.intern_syntax_context(SyntaxContextData::root());
 }

@@ -97,7 +97,7 @@ impl<'a> SymbolCollector<'a> {
     }
 
     fn do_work(&mut self, work: SymbolCollectorWork) {
-        self.db.unwind_if_cancelled();
+        // self.db.unwind_if_cancelled();
 
         let parent_name = work.parent.and_then(|id| self.def_with_body_id_name(id));
         self.with_container_name(parent_name, |s| s.collect_from_module(work.module_id));
@@ -274,9 +274,9 @@ impl<'a> SymbolCollector<'a> {
         }
     }
 
-    fn push_decl<'db, L>(&mut self, id: L, is_assoc: bool)
+    fn push_decl<L>(&mut self, id: L, is_assoc: bool)
     where
-        L: Lookup<Database<'db> = dyn DefDatabase + 'db> + Into<ModuleDefId>,
+        L: Lookup<Database = dyn DefDatabase> + Into<ModuleDefId>,
         <L as Lookup>::Data: HasSource,
         <<L as Lookup>::Data as HasSource>::Value: HasName,
     {
