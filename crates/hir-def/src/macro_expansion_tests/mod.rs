@@ -16,12 +16,13 @@ mod proc_macros;
 
 use std::{iter, ops::Range, sync};
 
+use base_db::RootQueryDb;
 use expect_test::Expect;
 use hir_expand::{
     db::ExpandDatabase,
     proc_macro::{ProcMacro, ProcMacroExpander, ProcMacroExpansionError, ProcMacroKind},
     span_map::SpanMapRef,
-    InFile, MacroFile, MacroFileIdExt,
+    InFile, MacroFileId, MacroFileIdExt,
 };
 use intern::Symbol;
 use span::{Edition, Span};

@@ -1,6 +1,6 @@
 //! Builtin macro
 
-use base_db::{AnchoredPath, FileLoader};
+use base_db::AnchoredPath;
 use cfg::CfgExpr;
 use either::Either;
 use intern::{
@@ -18,7 +18,7 @@ use syntax_bridge::syntax_node_to_token_tree;
 
 use crate::{
     builtin::quote::{dollar_crate, quote},
-    db::{self, ExpandDatabase},
+    db::ExpandDatabase,
     hygiene::{span_with_call_site_ctxt, span_with_def_site_ctxt},
     name,
     span_map::SpanMap,
@@ -423,7 +423,7 @@ fn use_panic_2021(db: &dyn ExpandDatabase, span: Span) -> bool {
         let Some(expn) = db.lookup_intern_syntax_context(span.ctx).outer_expn else {
             break false;
         };
-        let expn = db.lookup_intern_macro_call( expn);
+        let expn = db.lookup_intern_macro_call(expn);
         // FIXME: Record allow_internal_unstable in the macro def (not been done yet because it
         // would consume quite a bit extra memory for all call locs...)
         // if let Some(features) = expn.def.allow_internal_unstable {

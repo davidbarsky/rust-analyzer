@@ -659,6 +659,7 @@ dependencies = [
  "cfg",
  "cov-mark",
  "dashmap 5.5.3",
+ "db-ext-macro",
  "drop_bomb",
  "either",
  "expect-test",
@@ -675,6 +676,7 @@ dependencies = [
  "ra-ap-rustc_parse_format",
  "rustc-hash 2.1.0",
  "rustc_apfloat",
+ "salsa 0.18.0 (git+https://github.com/davidbarsky/salsa.git?branch=david-and-lukas/required-salsa-changes-for-ra)",
  "smallvec",
  "span",
  "stdx",
@@ -686,6 +688,7 @@ dependencies = [
  "tracing",
  "triomphe",
  "tt",
+ "vfs",
 ]
 
 [[package]]
@@ -729,6 +732,8 @@ dependencies = [
  "chalk-recursive",
  "chalk-solve",
  "cov-mark",
+ "dashmap 5.5.3",
+ "db-ext-macro",
  "either",
  "ena",
  "expect-test",
@@ -747,6 +752,7 @@ dependencies = [
  "ra-ap-rustc_pattern_analysis",
  "rustc-hash 2.1.0",
  "rustc_apfloat",
+ "salsa 0.18.0 (git+https://github.com/davidbarsky/salsa.git?branch=david-and-lukas/required-salsa-changes-for-ra)",
  "scoped-tls",
  "smallvec",
  "span",
@@ -759,6 +765,7 @@ dependencies = [
  "tracing-tree",
  "triomphe",
  "typed-arena",
+ "vfs",
 ]
 
 [[package]]
@@ -968,6 +975,8 @@ dependencies = [
  "bitflags 2.6.0",
  "cov-mark",
  "crossbeam-channel",
+ "dashmap 5.5.3",
+ "db-ext-macro",
  "either",
  "expect-test",
  "fst",
@@ -990,6 +999,7 @@ dependencies = [
  "test-utils",
  "tracing",
  "triomphe",
+ "vfs",
 ]
 
 [[package]]

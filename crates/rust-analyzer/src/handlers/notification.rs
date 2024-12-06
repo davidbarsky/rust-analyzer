@@ -295,7 +295,7 @@ fn run_flycheck(state: &mut GlobalState, vfs_path: VfsPath) -> bool {
         let world = state.snapshot();
         let may_flycheck_workspace = state.config.flycheck_workspace(None);
         let mut updated = false;
-        let task = move || -> std::result::Result<(), ide::Cancelled> {
+        let task = move || -> std::result::Result<(), ide_db::base_db::salsa::Cancelled> {
             // Is the target binary? If so we let flycheck run only for the workspace that contains the crate.
             let target = TargetSpec::for_file(&world, file_id)?.and_then(|it| {
                 let tgt_kind = it.target_kind();
