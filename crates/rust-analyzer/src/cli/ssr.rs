@@ -34,7 +34,7 @@ impl flags::Ssr {
         let edits = match_finder.edits();
         for (file_id, edit) in edits {
             if let Some(path) = vfs.file_path(file_id).as_path() {
-                let mut contents = db.file_text(file_id).to_string();
+                let mut contents = db.file_text(file_id).text(db).to_string();
                 edit.apply(&mut contents);
                 std::fs::write(path, contents)
                     .with_context(|| format!("failed to write {path}"))?;
@@ -49,7 +49,7 @@ impl flags::Search {
     /// `debug_snippet`. This is intended for debugging and probably isn't in it's current form useful
     /// for much else.
     pub fn run(self) -> anyhow::Result<()> {
-        use ide_db::base_db::SourceRootDatabase;
+        use ide_db::base_db::SourceDatabase;
         use ide_db::symbol_index::SymbolsDatabase;
         let cargo_config =
             CargoConfig { all_targets: true, set_test: true, ..CargoConfig::default() };

@@ -133,6 +133,7 @@ pub use {
     hir_expand::{
         attrs::{Attr, AttrId},
         change::ChangeWithProcMacros,
+        db::{parse_or_expand, setup_syntax_context_root},
         files::{
             FilePosition, FilePositionWrapper, FileRange, FileRangeWrapper, HirFilePosition,
             HirFileRange, InFile, InFileWrapper, InMacroFile, InRealFile, MacroFilePosition,
@@ -143,7 +144,7 @@ pub use {
         name::Name,
         prettify_macro_expansion,
         proc_macro::{ProcMacros, ProcMacrosBuilder},
-        tt, ExpandResult, HirFileId, HirFileIdExt, MacroFile, MacroFileIdExt,
+        tt, ExpandResult, HirFileId, HirFileIdExt, MacroFileId, MacroFileIdExt,
     },
     hir_ty::{
         consteval::ConstEvalError,
@@ -587,7 +588,7 @@ impl Module {
                     acc.extend(def.diagnostics(db, style_lints))
                 }
                 ModuleDef::Trait(t) => {
-                    for diag in db.trait_data_with_diagnostics(t.id).1.iter() {
+                    for diag in db.trait_data_with_diagnostics(t.id).diagnostics.iter() {
                         emit_def_diagnostic(db, acc, diag, edition);
                     }
 
@@ -604,19 +605,21 @@ impl Module {
                 ModuleDef::Adt(adt) => {
                     match adt {
                         Adt::Struct(s) => {
-                            for diag in db.struct_data_with_diagnostics(s.id).1.iter() {
+                            for diag in db.struct_data_with_diagnostics(s.id).diagnostics.iter() {
                                 emit_def_diagnostic(db, acc, diag, edition);
                             }
                         }
                         Adt::Union(u) => {
-                            for diag in db.union_data_with_diagnostics(u.id).1.iter() {
+                            for diag in db.union_data_with_diagnostics(u.id).diagnostics.iter() {
                                 emit_def_diagnostic(db, acc, diag, edition);
                             }
                         }
                         Adt::Enum(e) => {
                             for v in e.variants(db) {
                                 acc.extend(ModuleDef::Variant(v).diagnostics(db, style_lints));
-                                for diag in db.enum_variant_data_with_diagnostics(v.id).1.iter() {
+                                for diag in
+                                    db.enum_variant_data_with_diagnostics(v.id).diagnostics.iter()
+                                {
                                     emit_def_diagnostic(db, acc, diag, edition);
                                 }
                             }
@@ -650,7 +653,7 @@ impl Module {
 
             let ast_id_map = db.ast_id_map(file_id);
 
-            for diag in db.impl_data_with_diagnostics(impl_def.id).1.iter() {
+            for diag in db.impl_data_with_diagnostics(impl_def.id).diagnostics.iter() {
                 emit_def_diagnostic(db, acc, diag, edition);
             }
 
@@ -969,21 +972,21 @@ fn emit_def_diagnostic_(
                     AttrOwner::Field(FieldParent::Variant(parent), idx) => process_field_list(
                         ast_id_map
                             .get(item_tree[parent].ast_id)
-                            .to_node(&db.parse_or_expand(tree.file_id()))
+                            .to_node(&hir_expand::db::parse_or_expand(db.upcast(), tree.file_id()))
                             .field_list(),
                         idx,
                     )?,
                     AttrOwner::Field(FieldParent::Struct(parent), idx) => process_field_list(
                         ast_id_map
                             .get(item_tree[parent.index()].ast_id)
-                            .to_node(&db.parse_or_expand(tree.file_id()))
+                            .to_node(&hir_expand::db::parse_or_expand(db.upcast(), tree.file_id()))
                             .field_list(),
                         idx,
                     )?,
                     AttrOwner::Field(FieldParent::Union(parent), idx) => SyntaxNodePtr::new(
                         ast_id_map
                             .get(item_tree[parent.index()].ast_id)
-                            .to_node(&db.parse_or_expand(tree.file_id()))
+                            .to_node(&hir_expand::db::parse_or_expand(db.upcast(), tree.file_id()))
                             .record_field_list()?
                             .fields()
                             .nth(idx.into_raw().into_u32() as usize)?
@@ -992,7 +995,7 @@ fn emit_def_diagnostic_(
                     AttrOwner::Param(parent, idx) => SyntaxNodePtr::new(
                         ast_id_map
                             .get(item_tree[parent.index()].ast_id)
-                            .to_node(&db.parse_or_expand(tree.file_id()))
+                            .to_node(&hir_expand::db::parse_or_expand(db.upcast(), tree.file_id()))
                             .param_list()?
                             .params()
                             .nth(idx.into_raw().into_u32() as usize)?
@@ -1001,7 +1004,7 @@ fn emit_def_diagnostic_(
                     AttrOwner::TypeOrConstParamData(parent, idx) => SyntaxNodePtr::new(
                         ast_id_map
                             .get(parent.ast_id(&item_tree))
-                            .to_node(&db.parse_or_expand(tree.file_id()))
+                            .to_node(&hir_expand::db::parse_or_expand(db.upcast(), tree.file_id()))
                             .generic_param_list()?
                             .type_or_const_params()
                             .nth(idx.into_raw().into_u32() as usize)?
@@ -1010,7 +1013,7 @@ fn emit_def_diagnostic_(
                     AttrOwner::LifetimeParamData(parent, idx) => SyntaxNodePtr::new(
                         ast_id_map
                             .get(parent.ast_id(&item_tree))
-                            .to_node(&db.parse_or_expand(tree.file_id()))
+                            .to_node(&hir_expand::db::parse_or_expand(db.upcast(), tree.file_id()))
                             .generic_param_list()?
                             .lifetime_params()
                             .nth(idx.into_raw().into_u32() as usize)?
@@ -1800,7 +1803,8 @@ impl DefWithBody {
     ) {
         let krate = self.module(db).id.krate();
 
-        let (body, source_map) = db.body_with_source_map(self.into());
+        let res = db.body_with_source_map(self.into());
+        let (body, source_map) = (res.body, res.source_map);
 
         for (_, def_map) in body.blocks(db.upcast()) {
             Module { id: def_map.module_id(DefMap::ROOT) }.diagnostics(db, acc, style_lints);
@@ -1831,7 +1835,7 @@ impl DefWithBody {
                         None
                     };
                     MacroError {
-                        node: (*node).map(|it| it.into()),
+                        node: (node).map(|it| it.into()),
                         precise_location,
                         message,
                         error,
@@ -1840,7 +1844,7 @@ impl DefWithBody {
                     .into()
                 }
                 BodyDiagnostic::UnresolvedMacroCall { node, path } => UnresolvedMacroCall {
-                    macro_call: (*node).map(|ast_ptr| ast_ptr.into()),
+                    macro_call: (node).map(|ast_ptr| ast_ptr.into()),
                     precise_location: None,
                     path: path.clone(),
                     is_bang: true,
@@ -3168,7 +3172,7 @@ fn as_assoc_item<'db, ID, DEF, LOC>(
     id: ID,
 ) -> Option<AssocItem>
 where
-    ID: Lookup<Database<'db> = dyn DefDatabase + 'db, Data = AssocItemLoc<LOC>>,
+    ID: Lookup<Database = dyn DefDatabase, Data = AssocItemLoc<LOC>>,
     DEF: From<ID>,
     LOC: ItemTreeNode,
 {
@@ -3184,7 +3188,7 @@ fn as_extern_assoc_item<'db, ID, DEF, LOC>(
     id: ID,
 ) -> Option<ExternAssocItem>
 where
-    ID: Lookup<Database<'db> = dyn DefDatabase + 'db, Data = AssocItemLoc<LOC>>,
+    ID: Lookup<Database = dyn DefDatabase, Data = AssocItemLoc<LOC>>,
     DEF: From<ID>,
     LOC: ItemTreeNode,
 {
@@ -3524,7 +3528,8 @@ impl Local {
 
     /// All definitions for this local. Example: `let (a$0, _) | (_, a$0) = it;`
     pub fn sources(self, db: &dyn HirDatabase) -> Vec<LocalSource> {
-        let (body, source_map) = db.body_with_source_map(self.parent);
+        let res = db.body_with_source_map(self.parent);
+        let (body, source_map) = (res.body, res.source_map);
         match body.self_param.zip(source_map.self_param_syntax()) {
             Some((param, source)) if param == self.binding_id => {
                 let root = source.file_syntax(db.upcast());
@@ -3553,7 +3558,8 @@ impl Local {
 
     /// The leftmost definition for this local. Example: `let (a$0, _) | (_, a) = it;`
     pub fn primary_source(self, db: &dyn HirDatabase) -> LocalSource {
-        let (body, source_map) = db.body_with_source_map(self.parent);
+        let res = db.body_with_source_map(self.parent);
+        let (body, source_map) = (res.body, res.source_map);
         match body.self_param.zip(source_map.self_param_syntax()) {
             Some((param, source)) if param == self.binding_id => {
                 let root = source.file_syntax(db.upcast());
@@ -4281,7 +4287,9 @@ pub struct CaptureUsages {
 
 impl CaptureUsages {
     pub fn sources(&self, db: &dyn HirDatabase) -> Vec<CaptureUsageSource> {
-        let (body, source_map) = db.body_with_source_map(self.parent);
+        let res = db.body_with_source_map(self.parent);
+        let (body, source_map) = (res.body, res.source_map);
+
         let mut result = Vec::with_capacity(self.spans.len());
         for &span in self.spans.iter() {
             let is_ref = span.is_ref_span(&body);

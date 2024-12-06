@@ -6,7 +6,7 @@ use hir_def::{
     src::{HasChildSource, HasSource as _},
     CallableDefId, Lookup, MacroId, VariantId,
 };
-use hir_expand::{HirFileId, InFile};
+use hir_expand::{db::parse_or_expand, HirFileId, InFile};
 use hir_ty::db::InternedClosure;
 use span::EditionedFileId;
 use syntax::ast;
@@ -244,9 +244,9 @@ impl HasSource for Param {
             }
             Callee::Closure(closure, _) => {
                 let InternedClosure(owner, expr_id) = db.lookup_intern_closure(closure.into());
-                let (_, source_map) = db.body_with_source_map(owner);
+                let source_map = db.body_with_source_map(owner).source_map;
                 let ast @ InFile { file_id, value } = source_map.expr_syntax(expr_id).ok()?;
-                let root = db.parse_or_expand(file_id);
+                let root = parse_or_expand(db.upcast(), file_id);
                 match value.to_node(&root) {
                     ast::Expr::ClosureExpr(it) => it
                         .param_list()?
@@ -278,7 +278,7 @@ impl HasSource for Label {
     type Ast = ast::Label;
 
     fn source(self, db: &dyn HirDatabase) -> Option<InFile<Self::Ast>> {
-        let (_body, source_map) = db.body_with_source_map(self.parent);
+        let source_map = db.body_with_source_map(self.parent).source_map;
         let src = source_map.label_syntax(self.label_id);
         let root = src.file_syntax(db.upcast());
         Some(src.map(|ast| ast.to_node(&root)))
@@ -296,7 +296,7 @@ impl HasSource for ExternCrateDecl {
 impl HasSource for InlineAsmOperand {
     type Ast = ast::AsmOperandNamed;
     fn source(self, db: &dyn HirDatabase) -> Option<InFile<Self::Ast>> {
-        let (_body, source_map) = db.body_with_source_map(self.owner);
+        let source_map = db.body_with_source_map(self.owner).source_map;
         if let Ok(src) = source_map.expr_syntax(self.expr) {
             let root = src.file_syntax(db.upcast());
             return src

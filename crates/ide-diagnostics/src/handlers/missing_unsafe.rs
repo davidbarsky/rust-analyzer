@@ -1,4 +1,3 @@
-use hir::db::ExpandDatabase;
 use hir::HirFileIdExt;
 use ide_db::text_edit::TextEdit;
 use ide_db::{assists::Assist, source_change::SourceChange};
@@ -31,7 +30,7 @@ fn fixes(ctx: &DiagnosticsContext<'_>, d: &hir::MissingUnsafe) -> Option<Vec<Ass
         return None;
     }
 
-    let root = ctx.sema.db.parse_or_expand(d.expr.file_id);
+    let root = hir::parse_or_expand(ctx.sema.db, d.expr.file_id);
     let node = d.expr.value.to_node(&root);
     let expr = node.syntax().ancestors().find_map(ast::Expr::cast)?;
 

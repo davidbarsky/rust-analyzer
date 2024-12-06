@@ -178,7 +178,7 @@ pub fn expand_speculative(
     speculative_args: &SyntaxNode,
     token_to_map: SyntaxToken,
 ) -> Option<(SyntaxNode, SyntaxToken)> {
-    let loc = db.lookup_intern_macro_call( actual_macro_call);
+    let loc = db.lookup_intern_macro_call(actual_macro_call);
     let (_, _, span) = db.macro_arg_considering_derives(actual_macro_call, &loc.kind);
 
     let span_map = RealSpanMap::absolute(span.anchor.file_id);
@@ -423,7 +423,7 @@ fn macro_arg_considering_derives(
 }
 
 fn macro_arg(db: &dyn ExpandDatabase, id: MacroCallId) -> MacroArgResult {
-    let loc = db.lookup_intern_macro_call( id);
+    let loc = db.lookup_intern_macro_call(id);
 
     if let MacroCallLoc {
         def: MacroDefId { kind: MacroDefKind::BuiltInEager(..), .. },
@@ -774,6 +774,6 @@ fn check_tt_count(tt: &tt::Subtree) -> Result<(), ExpandResult<()>> {
     }
 }
 
-fn setup_syntax_context_root(db: &dyn ExpandDatabase) {
+pub fn setup_syntax_context_root(db: &dyn ExpandDatabase) {
     db.intern_syntax_context(SyntaxContextData::root());
 }

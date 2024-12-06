@@ -28,7 +28,7 @@ use hir_expand::{
     hygiene::SyntaxContextExt as _,
     inert_attr_macro::find_builtin_attr_idx,
     name::AsName,
-    FileRange, InMacroFile, MacroCallId, MacroFile, MacroFileIdExt,
+    FileRange, InMacroFile, MacroCallId, MacroFileId, MacroFileIdExt,
 };
 use intern::Symbol;
 use itertools::Itertools;
@@ -375,7 +375,7 @@ impl<'db> SemanticsImpl<'db> {
     }
 
     pub fn parse_or_expand(&self, file_id: HirFileId) -> SyntaxNode {
-        let node = self.db.parse_or_expand(file_id);
+        let node = hir_expand::db::parse_or_expand(self.db.upcast(), file_id);
         self.cache(node.clone(), file_id);
         node
     }
@@ -484,7 +484,7 @@ impl<'db> SemanticsImpl<'db> {
             .into_iter()
             .flat_map(|call| {
                 let file_id = call?.as_file();
-                let node = self.db.parse_or_expand(file_id);
+                let node = hir_expand::db::parse_or_expand(self.db.upcast(), file_id);
                 self.cache(node.clone(), file_id);
                 Some(node)
             })
@@ -1786,7 +1786,8 @@ impl<'db> SemanticsImpl<'db> {
         let Some(def) = def else { return false };
         let enclosing_node = enclosing_item.as_ref().either(|i| i.syntax(), |v| v.syntax());
 
-        let (body, source_map) = self.db.body_with_source_map(def);
+        let res = self.db.body_with_source_map(def);
+        let (body, source_map) = (res.body, res.source_map);
 
         let file_id = self.find_file(expr.syntax()).file_id;
 

@@ -30,10 +30,11 @@ use triomphe::Arc;
 
 use std::hash::Hash;
 
-use base_db::{ra_salsa::InternValueTrivial, CrateId};
+use base_db::{CrateId, InternValueTrivial};
 use either::Either;
 use span::{
-    Edition, EditionedFileId, ErasedFileAstId, FileAstId, HirFileIdRepr, Span, SpanAnchor, SyntaxContextData, SyntaxContextId
+    Edition, EditionedFileId, ErasedFileAstId, FileAstId, HirFileIdRepr, Span, SpanAnchor,
+    SyntaxContextData, SyntaxContextId,
 };
 use syntax::{
     ast::{self, AstNode},
@@ -82,7 +83,7 @@ macro_rules! impl_intern_lookup {
         impl $crate::Intern for $loc {
             type Database = dyn $db;
             type ID = $id;
-            fn intern(self, db: &Self::Database) -> $id {
+            fn intern(self, db: &Self::Database) -> Self::ID {
                 db.$intern(self)
             }
         }
@@ -90,7 +91,7 @@ macro_rules! impl_intern_lookup {
         impl $crate::Lookup for $id {
             type Database = dyn $db;
             type Data = $loc;
-            fn lookup(&self, db: &Self::Database) -> $loc {
+            fn lookup(&self, db: &Self::Database) -> Self::Data {
                 db.$lookup(*self)
             }
         }
@@ -335,9 +336,7 @@ impl HirFileIdExt for HirFileId {
     fn edition(self, db: &dyn ExpandDatabase) -> Edition {
         match self.repr() {
             HirFileIdRepr::FileId(file_id) => file_id.edition(),
-            HirFileIdRepr::MacroFile(m) => {
-                db.lookup_intern_macro_call(m.macro_call_id).def.edition
-            }
+            HirFileIdRepr::MacroFile(m) => db.lookup_intern_macro_call(m.macro_call_id).def.edition,
         }
     }
     fn original_file(self, db: &dyn ExpandDatabase) -> EditionedFileId {
@@ -374,8 +373,7 @@ impl HirFileIdExt for HirFileId {
     }
 
     fn original_call_node(self, db: &dyn ExpandDatabase) -> Option<InRealFile<SyntaxNode>> {
-        let mut call =
-            db.lookup_intern_macro_call(self.macro_file()?.macro_call_id).to_node(db);
+        let mut call = db.lookup_intern_macro_call(self.macro_file()?.macro_call_id).to_node(db);
         loop {
             match call.file_id.repr() {
                 HirFileIdRepr::FileId(file_id) => {
@@ -470,7 +468,7 @@ impl MacroFileIdExt for MacroFileId {
     }
 
     fn is_include_like_macro(&self, db: &dyn ExpandDatabase) -> bool {
-        db.lookup_intern_macro_call( self.macro_call_id).def.is_include_like()
+        db.lookup_intern_macro_call(self.macro_call_id).def.is_include_like()
     }
 
     fn is_env_or_option_env(&self, db: &dyn ExpandDatabase) -> bool {
@@ -498,7 +496,7 @@ impl MacroFileIdExt for MacroFileId {
     }
 
     fn is_derive_attr_pseudo_expansion(&self, db: &dyn ExpandDatabase) -> bool {
-        let loc = db.lookup_intern_macro_call( self.macro_call_id);
+        let loc = db.lookup_intern_macro_call(self.macro_call_id);
         loc.def.is_attribute_derive()
     }
 }
@@ -698,7 +696,7 @@ impl MacroCallKind {
         let file_id = loop {
             match kind.file_id().repr() {
                 HirFileIdRepr::MacroFile(file) => {
- db.lookup_intern_macro_call(file.macro_call_id).kind;
+                    db.lookup_intern_macro_call(file.macro_call_id).kind;
                 }
                 HirFileIdRepr::FileId(file_id) => break file_id,
             }

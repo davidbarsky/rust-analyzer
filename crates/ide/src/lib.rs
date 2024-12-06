@@ -64,9 +64,17 @@ use fetch_crates::CrateInfo;
 use hir::{sym, ChangeWithProcMacros};
 use ide_db::{
     base_db::{
-        ra_salsa::{self, ParallelDatabase},
-        CrateOrigin, CrateWorkspaceData, Env, FileLoader, FileSet, SourceDatabase,
-        SourceRootDatabase, VfsPath,
+        // ra_salsa::{self, ParallelDatabase},
+        salsa::Cancelled,
+        CrateOrigin,
+        CrateWorkspaceData,
+        Env,
+        FileLoader,
+        FileSet,
+        RootQueryDb,
+        SourceDatabase,
+        Upcast,
+        VfsPath,
     },
     prime_caches, symbol_index, FxHashMap, FxIndexSet, LineIndexDatabase,
 };
@@ -124,7 +132,7 @@ pub use ide_completion::{
 };
 pub use ide_db::text_edit::{Indel, TextEdit};
 pub use ide_db::{
-    base_db::{Cancelled, CrateGraph, CrateId, FileChange, SourceRoot, SourceRootId},
+    base_db::{CrateGraph, CrateId, FileChange, SourceRoot, SourceRootId},
     documentation::Documentation,
     label::Label,
     line_index::{LineCol, LineIndex},
@@ -182,7 +190,8 @@ impl AnalysisHost {
     /// Returns a snapshot of the current state, which you can query for
     /// semantic information.
     pub fn analysis(&self) -> Analysis {
-        Analysis { db: self.db.snapshot() }
+        todo!()
+        // Analysis { db: self.db.snapshot() }
     }
 
     /// Applies changes to the current state of the world. If there are
@@ -218,7 +227,7 @@ impl Default for AnalysisHost {
 /// `Analysis` are canceled (most method return `Err(Canceled)`).
 #[derive(Debug)]
 pub struct Analysis {
-    db: ra_salsa::Snapshot<RootDatabase>,
+    db: RootDatabase,
 }
 
 // As a general design guideline, `Analysis` API are intended to be independent
@@ -277,12 +286,12 @@ impl Analysis {
     }
 
     pub fn source_root_id(&self, file_id: FileId) -> Cancellable<SourceRootId> {
-        self.with_db(|db| db.file_source_root(file_id))
+        self.with_db(|db| db.source_root(file_id).source_root_id(db))
     }
 
-    pub fn is_local_source_root(&self, source_root_id: SourceRootId) -> Cancellable<bool> {
+    pub fn is_local_source_root(&self, file_id: FileId) -> Cancellable<bool> {
         self.with_db(|db| {
-            let sr = db.source_root(source_root_id);
+            let sr = db.source_root(file_id).source_root(db);
             !sr.is_library
         })
     }
@@ -296,7 +305,7 @@ impl Analysis {
 
     /// Gets the text of the source file.
     pub fn file_text(&self, file_id: FileId) -> Cancellable<Arc<str>> {
-        self.with_db(|db| SourceDatabase::file_text(db, file_id))
+        self.with_db(|db| SourceDatabase::file_text(db, file_id).text(db))
     }
 
     /// Gets the syntax tree of the file.
@@ -307,7 +316,7 @@ impl Analysis {
 
     /// Returns true if this file belongs to an immutable library.
     pub fn is_library_file(&self, file_id: FileId) -> Cancellable<bool> {
-        self.with_db(|db| db.source_root(db.file_source_root(file_id)).is_library)
+        self.with_db(|db| db.source_root(file_id).source_root(db).is_library)
     }
 
     /// Gets the file's `LineIndex`: data structure to convert between absolute
@@ -598,7 +607,10 @@ impl Analysis {
 
     /// Returns crates this file *might* belong too.
     pub fn relevant_crates_for(&self, file_id: FileId) -> Cancellable<Vec<CrateId>> {
-        self.with_db(|db| db.relevant_crates(file_id).iter().copied().collect())
+        self.with_db(|db| {
+            let db = Upcast::<dyn RootQueryDb>::upcast(db);
+            db.relevant_crates(file_id).iter().copied().collect()
+        })
     }
 
     /// Returns the edition of the given crate.
@@ -839,7 +851,8 @@ impl Analysis {
     where
         F: FnOnce(&RootDatabase) -> T + std::panic::UnwindSafe,
     {
-        Cancelled::catch(|| f(&self.db))
+        todo!()
+        // Cancelled::catch(|| f(&self.db))
     }
 }
 
