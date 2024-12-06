@@ -188,7 +188,8 @@ impl ChildBySource for EnumId {
 
 impl ChildBySource for DefWithBodyId {
     fn child_by_source_to(&self, db: &dyn DefDatabase, res: &mut DynMap, file_id: HirFileId) {
-        let (body, sm) = db.body_with_source_map(*self);
+        let body_and_source_map = db.body_with_source_map(*self);
+        let (body, sm) = (body_and_source_map.body, body_and_source_map.source_map);
         if let &DefWithBodyId::VariantId(v) = self {
             VariantId::EnumVariantId(v).child_by_source_to(db, res, file_id)
         }
@@ -251,7 +252,7 @@ fn insert_item_loc<ID, N, Data>(
     id: ID,
     key: Key<N::Source, ID>,
 ) where
-    ID: for<'db> Lookup<Database<'db> = dyn DefDatabase + 'db, Data = Data> + 'static,
+    ID: for<'db> Lookup<Database = dyn DefDatabase, Data = Data> + 'static,
     Data: ItemTreeLoc<Id = N>,
     N: ItemTreeNode,
     N::Source: 'static,

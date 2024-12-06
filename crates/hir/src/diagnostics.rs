@@ -685,7 +685,8 @@ impl AnyDiagnostic {
             }
             Either::Right(source) => source,
         };
-        let syntax = || source.value.to_node(&db.parse_or_expand(source.file_id));
+        let syntax =
+            || source.value.to_node(&hir_expand::db::parse_or_expand(db.upcast(), source.file_id));
         Some(match diag.kind {
             TyLoweringDiagnosticKind::GenericArgsProhibited { segment, reason } => {
                 let ast::Type::PathType(syntax) = syntax() else { return None };

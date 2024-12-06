@@ -31,7 +31,7 @@ use hir_def::{
 use hir_expand::{
     mod_path::path,
     name::{AsName, Name},
-    HirFileId, InFile, InMacroFile, MacroFile, MacroFileIdExt,
+    HirFileId, InFile, InMacroFile, MacroFileId, MacroFileIdExt,
 };
 use hir_ty::{
     diagnostics::{
@@ -88,7 +88,8 @@ impl SourceAnalyzer {
         offset: Option<TextSize>,
         infer: Option<Arc<InferenceResult>>,
     ) -> SourceAnalyzer {
-        let (body, source_map) = db.body_with_source_map(def);
+        let res = db.body_with_source_map(def);
+        let (body, source_map) = (res.body, res.source_map);
         let scopes = db.expr_scopes(def);
         let scope = match offset {
             None => scope_for(db, &scopes, &source_map, node),
@@ -1046,7 +1047,7 @@ impl SourceAnalyzer {
             None => return func,
         };
         let env = db.trait_environment_for_body(owner);
-        db.lookup_impl_method(env, func, substs).0
+        db.lookup_impl_method(env, func, substs).function_id
     }
 
     fn resolve_impl_const_or_trait_def(

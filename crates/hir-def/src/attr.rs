@@ -456,7 +456,7 @@ impl AttrsWithOwner {
             AttrDefId::FieldId(id) => {
                 let map = db.fields_attrs_source_map(id.parent);
                 let file_id = id.parent.file_id(db);
-                let root = db.parse_or_expand(file_id);
+                let root = hir_expand::db::parse_or_expand(db.upcast(), file_id);
                 let owner = ast::AnyHasAttrs::new(map[id.local_id].to_node(&root));
                 InFile::new(file_id, owner)
             }
@@ -610,17 +610,14 @@ impl<'attr> AttrQuery<'attr> {
 
 fn any_has_attrs<'db>(
     db: &(dyn DefDatabase + 'db),
-    id: impl Lookup<
-        Database<'db> = dyn DefDatabase + 'db,
-        Data = impl HasSource<Value = impl ast::HasAttrs>,
-    >,
+    id: impl Lookup<Database = dyn DefDatabase, Data = impl HasSource<Value = impl ast::HasAttrs>>,
 ) -> InFile<ast::AnyHasAttrs> {
     id.lookup(db).source(db).map(ast::AnyHasAttrs::new)
 }
 
 fn attrs_from_item_tree_loc<'db, N: ItemTreeNode>(
     db: &(dyn DefDatabase + 'db),
-    lookup: impl Lookup<Database<'db> = dyn DefDatabase + 'db, Data = impl ItemTreeLoc<Id = N>>,
+    lookup: impl Lookup<Database = dyn DefDatabase, Data = impl ItemTreeLoc<Id = N>>,
 ) -> RawAttrs {
     let id = lookup.lookup(db).item_tree_id();
     let tree = id.item_tree(db);

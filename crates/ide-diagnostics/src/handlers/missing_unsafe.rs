@@ -43,8 +43,9 @@ fn fixes(ctx: &DiagnosticsContext<'_>, d: &hir::MissingUnsafe) -> Option<Vec<Ass
         return None;
     }
 
-    let root = ctx.sema.db.parse_or_expand(d.node.file_id);
+    let root = hir::parse_or_expand(ctx.sema.db, d.node.file_id);
     let node = d.node.value.to_node(&root);
+
     let expr = node.syntax().ancestors().find_map(ast::Expr::cast)?;
 
     let node_to_add_unsafe_block = pick_best_node_to_add_unsafe_block(&expr)?;

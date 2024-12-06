@@ -174,16 +174,22 @@ fn parse_repr_tt(tt: &Subtree) -> Option<ReprOptions> {
     Some(ReprOptions { int, align: max_align, pack: min_pack, flags, field_shuffle_seed: 0 })
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StructAndDiagnostics {
+    pub struct_data: Arc<StructData>,
+    pub diagnostics: DefDiagnostics,
+}
+
 impl StructData {
     #[inline]
     pub(crate) fn struct_data_query(db: &dyn DefDatabase, id: StructId) -> Arc<StructData> {
-        db.struct_data_with_diagnostics(id).0
+        db.struct_data_with_diagnostics(id).struct_data
     }
 
     pub(crate) fn struct_data_with_diagnostics_query(
         db: &dyn DefDatabase,
         id: StructId,
-    ) -> (Arc<StructData>, DefDiagnostics) {
+    ) -> StructAndDiagnostics {
         let loc = id.lookup(db);
         let krate = loc.container.krate;
         let item_tree = loc.id.item_tree(db);
@@ -220,8 +226,8 @@ impl StructData {
             None,
         );
         let types_map = strukt.types_map.clone();
-        (
-            Arc::new(StructData {
+        StructAndDiagnostics {
+            struct_data: Arc::new(StructData {
                 name: strukt.name.clone(),
                 variant_data: Arc::new(match strukt.shape {
                     FieldsShape::Record => VariantData::Record { fields, types_map },
@@ -232,19 +238,19 @@ impl StructData {
                 visibility: item_tree[strukt.visibility].clone(),
                 flags,
             }),
-            DefDiagnostics::new(diagnostics),
-        )
+            diagnostics: DefDiagnostics::new(diagnostics),
+        }
     }
 
     #[inline]
     pub(crate) fn union_data_query(db: &dyn DefDatabase, id: UnionId) -> Arc<StructData> {
-        db.union_data_with_diagnostics(id).0
+        db.union_data_with_diagnostics(id).struct_data
     }
 
     pub(crate) fn union_data_with_diagnostics_query(
         db: &dyn DefDatabase,
         id: UnionId,
-    ) -> (Arc<StructData>, DefDiagnostics) {
+    ) -> StructAndDiagnostics {
         let loc = id.lookup(db);
         let krate = loc.container.krate;
         let item_tree = loc.id.item_tree(db);
@@ -271,16 +277,16 @@ impl StructData {
             None,
         );
         let types_map = union.types_map.clone();
-        (
-            Arc::new(StructData {
+        StructAndDiagnostics {
+            struct_data: Arc::new(StructData {
                 name: union.name.clone(),
                 variant_data: Arc::new(VariantData::Record { fields, types_map }),
                 repr,
                 visibility: item_tree[union.visibility].clone(),
                 flags,
             }),
-            DefDiagnostics::new(diagnostics),
-        )
+            diagnostics: DefDiagnostics::new(diagnostics),
+        }
     }
 }
 
@@ -343,19 +349,25 @@ impl EnumData {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EnumVariantAndDiagnostics {
+    pub variant_data: Arc<EnumVariantData>,
+    pub diagnostics: DefDiagnostics,
+}
+
 impl EnumVariantData {
     #[inline]
     pub(crate) fn enum_variant_data_query(
         db: &dyn DefDatabase,
         e: EnumVariantId,
     ) -> Arc<EnumVariantData> {
-        db.enum_variant_data_with_diagnostics(e).0
+        db.enum_variant_data_with_diagnostics(e).variant_data
     }
 
     pub(crate) fn enum_variant_data_with_diagnostics_query(
         db: &dyn DefDatabase,
         e: EnumVariantId,
-    ) -> (Arc<EnumVariantData>, DefDiagnostics) {
+    ) -> EnumVariantAndDiagnostics {
         let loc = e.lookup(db);
         let container = loc.parent.lookup(db).container;
         let krate = container.krate;
@@ -375,8 +387,8 @@ impl EnumVariantData {
         );
         let types_map = variant.types_map.clone();
 
-        (
-            Arc::new(EnumVariantData {
+        EnumVariantAndDiagnostics {
+            variant_data: Arc::new(EnumVariantData {
                 name: variant.name.clone(),
                 variant_data: Arc::new(match variant.shape {
                     FieldsShape::Record => VariantData::Record { fields, types_map },
@@ -384,8 +396,8 @@ impl EnumVariantData {
                     FieldsShape::Unit => VariantData::Unit,
                 }),
             }),
-            DefDiagnostics::new(diagnostics),
-        )
+            diagnostics: DefDiagnostics::new(diagnostics),
+        }
     }
 }
 

@@ -1,4 +1,4 @@
-use hir::{db::ExpandDatabase, diagnostics::RemoveUnnecessaryElse, HirFileIdExt};
+use hir::{diagnostics::RemoveUnnecessaryElse, HirFileIdExt};
 use ide_db::text_edit::TextEdit;
 use ide_db::{assists::Assist, source_change::SourceChange};
 use itertools::Itertools;
@@ -42,7 +42,7 @@ pub(crate) fn remove_unnecessary_else(
 }
 
 fn fixes(ctx: &DiagnosticsContext<'_>, d: &RemoveUnnecessaryElse) -> Option<Vec<Assist>> {
-    let root = ctx.sema.db.parse_or_expand(d.if_expr.file_id);
+    let root = hir::parse_or_expand(ctx.sema.db, d.if_expr.file_id);
     let if_expr = d.if_expr.value.to_node(&root);
     let if_expr = ctx.sema.original_ast_node(if_expr)?;
 

@@ -496,7 +496,7 @@ pub(crate) fn handle_document_diagnostics(
 
     let file_id = from_proto::file_id(&snap, &params.text_document.uri)?;
     let source_root = snap.analysis.source_root_id(file_id)?;
-    if !snap.analysis.is_local_source_root(source_root)? {
+    if !snap.analysis.is_local_source_root(file_id)? {
         return Ok(EMPTY);
     }
     let config = snap.config.diagnostics(Some(source_root));
@@ -1309,7 +1309,7 @@ pub(crate) fn handle_rename(
     {
         for op in ops {
             if let lsp_types::DocumentChangeOperation::Op(doc_change_op) = op {
-                resource_ops_supported(&snap.config, resolve_resource_op(doc_change_op))?
+                resource_ops_supported(&snap.config, resolve_resource_op(&doc_change_op))?
             }
         }
     }
@@ -1432,7 +1432,7 @@ pub(crate) fn handle_code_action(
         if let Some(changes) = changes {
             for change in changes {
                 if let lsp_ext::SnippetDocumentChangeOperation::Op(res_op) = change {
-                    resource_ops_supported(&snap.config, resolve_resource_op(res_op))?
+                    resource_ops_supported(&snap.config, resolve_resource_op(&res_op))?
                 }
             }
         }

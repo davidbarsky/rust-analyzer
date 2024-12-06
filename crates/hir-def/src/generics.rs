@@ -202,6 +202,12 @@ pub enum WherePredicateTypeTarget {
     TypeOrConstParam(LocalTypeOrConstParamId),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GenericParamsWithTypesSourceMap {
+    pub generic_params: Arc<GenericParams>,
+    pub source_map: Option<Arc<TypesSourceMap>>,
+}
+
 impl GenericParams {
     /// Number of Generic parameters (type_or_consts + lifetimes)
     #[inline]
@@ -303,13 +309,13 @@ impl GenericParams {
         db: &dyn DefDatabase,
         def: GenericDefId,
     ) -> Arc<GenericParams> {
-        db.generic_params_with_source_map(def).0
+        db.generic_params_with_source_map(def).generic_params
     }
 
     pub(crate) fn generic_params_with_source_map_query(
         db: &dyn DefDatabase,
         def: GenericDefId,
-    ) -> (Arc<GenericParams>, Option<Arc<TypesSourceMap>>) {
+    ) -> GenericParamsWithTypesSourceMap {
         let _p = tracing::info_span!("generic_params_query").entered();
 
         let krate = def.krate(db);
@@ -362,23 +368,23 @@ impl GenericParams {
             };
         fn id_to_generics<Id: GenericsItemTreeNode>(
             db: &dyn DefDatabase,
-            id: impl for<'db> Lookup<
-                Database<'db> = dyn DefDatabase + 'db,
-                Data = impl ItemTreeLoc<Id = Id>,
-            >,
+            id: impl for<'db> Lookup<Database = dyn DefDatabase, Data = impl ItemTreeLoc<Id = Id>>,
             enabled_params: impl Fn(
                 &Arc<GenericParams>,
                 &ItemTree,
                 GenericModItem,
             ) -> Arc<GenericParams>,
-        ) -> (Arc<GenericParams>, Option<Arc<TypesSourceMap>>)
+        ) -> GenericParamsWithTypesSourceMap
         where
             FileItemTreeId<Id>: Into<GenericModItem>,
         {
             let id = id.lookup(db).item_tree_id();
             let tree = id.item_tree(db);
             let item = &tree[id.value];
-            (enabled_params(item.generic_params(), &tree, id.value.into()), None)
+            GenericParamsWithTypesSourceMap {
+                generic_params: enabled_params(item.generic_params(), &tree, id.value.into()),
+                source_map: None,
+            }
         }
 
         match def {
@@ -393,9 +399,12 @@ impl GenericParams {
                 let module = loc.container.module(db);
                 let func_data = db.function_data(id);
                 if func_data.params.is_empty() {
-                    (enabled_params, None)
+                    GenericParamsWithTypesSourceMap {
+                        generic_params: enabled_params,
+                        source_map: None,
+                    }
                 } else {
-                    let source_maps = loc.id.item_tree_with_source_map(db).1;
+                    let source_maps = loc.id.item_tree_with_source_map(db).source_map;
                     let item_source_maps = source_maps.function(loc.id.value);
                     let mut generic_params = GenericParamsCollector {
                         type_or_consts: enabled_params.type_or_consts.clone(),
@@ -423,7 +432,10 @@ impl GenericParams {
                         );
                     }
                     let generics = generic_params.finish(types_map, &mut types_source_maps);
-                    (generics, Some(Arc::new(types_source_maps)))
+                    GenericParamsWithTypesSourceMap {
+                        generic_params: generics,
+                        source_map: Some(Arc::new(types_source_maps)),
+                    }
                 }
             }
             GenericDefId::AdtId(AdtId::StructId(id)) => id_to_generics(db, id, enabled_params),
@@ -433,15 +445,15 @@ impl GenericParams {
             GenericDefId::TraitAliasId(id) => id_to_generics(db, id, enabled_params),
             GenericDefId::TypeAliasId(id) => id_to_generics(db, id, enabled_params),
             GenericDefId::ImplId(id) => id_to_generics(db, id, enabled_params),
-            GenericDefId::ConstId(_) => (
-                Arc::new(GenericParams {
+            GenericDefId::ConstId(_) => GenericParamsWithTypesSourceMap {
+                generic_params: Arc::new(GenericParams {
                     type_or_consts: Default::default(),
                     lifetimes: Default::default(),
                     where_predicates: Default::default(),
                     types_map: Default::default(),
                 }),
-                None,
-            ),
+                source_map: None,
+            },
         }
     }
 }

@@ -1,6 +1,6 @@
 use std::iter;
 
-use hir::{db::ExpandDatabase, Adt, FileRange, HasSource, HirDisplay, InFile, Struct, Union};
+use hir::{Adt, FileRange, HasSource, HirDisplay, InFile, Struct, Union};
 use ide_db::text_edit::TextEdit;
 use ide_db::{
     assists::{Assist, AssistId, AssistKind},
@@ -71,7 +71,8 @@ fn fixes(ctx: &DiagnosticsContext<'_>, d: &hir::UnresolvedField) -> Option<Vec<A
 // FIXME: Add Snippet Support
 fn field_fix(ctx: &DiagnosticsContext<'_>, d: &hir::UnresolvedField) -> Option<Assist> {
     // Get the FileRange of the invalid field access
-    let root = ctx.sema.db.parse_or_expand(d.expr.file_id);
+    let root = hir::parse_or_expand(ctx.sema.db, d.expr.file_id);
+
     let expr = d.expr.value.to_node(&root);
 
     let error_range = ctx.sema.original_range_opt(expr.syntax())?;
@@ -263,7 +264,7 @@ fn method_fix(
     ctx: &DiagnosticsContext<'_>,
     expr_ptr: &InFile<AstPtr<ast::Expr>>,
 ) -> Option<Assist> {
-    let root = ctx.sema.db.parse_or_expand(expr_ptr.file_id);
+    let root = hir::parse_or_expand(ctx.sema.db, expr_ptr.file_id);
     let expr = expr_ptr.value.to_node(&root);
     let FileRange { range, file_id } = ctx.sema.original_range_opt(expr.syntax())?;
     Some(Assist {

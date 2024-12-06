@@ -133,6 +133,7 @@ pub use {
     hir_expand::{
         attrs::{Attr, AttrId},
         change::ChangeWithProcMacros,
+        db::{parse_or_expand, setup_syntax_context_root},
         files::{
             FilePosition, FilePositionWrapper, FileRange, FileRangeWrapper, HirFilePosition,
             HirFileRange, InFile, InFileWrapper, InMacroFile, InRealFile, MacroFilePosition,
@@ -143,7 +144,7 @@ pub use {
         name::Name,
         prettify_macro_expansion,
         proc_macro::{ProcMacros, ProcMacrosBuilder},
-        tt, ExpandResult, HirFileId, HirFileIdExt, MacroFile, MacroFileIdExt,
+        tt, ExpandResult, HirFileId, HirFileIdExt, MacroFileId, MacroFileIdExt,
     },
     hir_ty::{
         consteval::ConstEvalError,
@@ -609,7 +610,7 @@ impl Module {
                     acc.extend(def.diagnostics(db, style_lints))
                 }
                 ModuleDef::Trait(t) => {
-                    for diag in db.trait_data_with_diagnostics(t.id).1.iter() {
+                    for diag in db.trait_data_with_diagnostics(t.id).diagnostics.iter() {
                         emit_def_diagnostic(db, acc, diag, edition);
                     }
 
@@ -627,27 +628,31 @@ impl Module {
                     match adt {
                         Adt::Struct(s) => {
                             let tree_id = s.id.lookup(db.upcast()).id;
-                            let tree_source_maps = tree_id.item_tree_with_source_map(db.upcast()).1;
+                            let tree_source_maps =
+                                tree_id.item_tree_with_source_map(db.upcast()).source_map;
                             push_ty_diagnostics(
                                 db,
                                 acc,
-                                db.field_types_with_diagnostics(s.id.into()).1,
+                                db.field_types_with_diagnostics(s.id.into()).diagnostics,
                                 tree_source_maps.strukt(tree_id.value).item(),
                             );
-                            for diag in db.struct_data_with_diagnostics(s.id).1.iter() {
+
+                            for diag in db.struct_data_with_diagnostics(s.id).diagnostics.iter() {
                                 emit_def_diagnostic(db, acc, diag, edition);
                             }
                         }
                         Adt::Union(u) => {
                             let tree_id = u.id.lookup(db.upcast()).id;
-                            let tree_source_maps = tree_id.item_tree_with_source_map(db.upcast()).1;
+                            let tree_source_maps =
+                                tree_id.item_tree_with_source_map(db.upcast()).source_map;
                             push_ty_diagnostics(
                                 db,
                                 acc,
-                                db.field_types_with_diagnostics(u.id.into()).1,
+                                db.field_types_with_diagnostics(u.id.into()).diagnostics,
                                 tree_source_maps.union(tree_id.value).item(),
                             );
-                            for diag in db.union_data_with_diagnostics(u.id).1.iter() {
+
+                            for diag in db.union_data_with_diagnostics(u.id).diagnostics.iter() {
                                 emit_def_diagnostic(db, acc, diag, edition);
                             }
                         }
@@ -655,15 +660,17 @@ impl Module {
                             for v in e.variants(db) {
                                 let tree_id = v.id.lookup(db.upcast()).id;
                                 let tree_source_maps =
-                                    tree_id.item_tree_with_source_map(db.upcast()).1;
+                                    tree_id.item_tree_with_source_map(db.upcast()).source_map;
                                 push_ty_diagnostics(
                                     db,
                                     acc,
-                                    db.field_types_with_diagnostics(v.id.into()).1,
+                                    db.field_types_with_diagnostics(v.id.into()).diagnostics,
                                     tree_source_maps.variant(tree_id.value),
                                 );
                                 acc.extend(ModuleDef::Variant(v).diagnostics(db, style_lints));
-                                for diag in db.enum_variant_data_with_diagnostics(v.id).1.iter() {
+                                for diag in
+                                    db.enum_variant_data_with_diagnostics(v.id).diagnostics.iter()
+                                {
                                     emit_def_diagnostic(db, acc, diag, edition);
                                 }
                             }
@@ -674,11 +681,12 @@ impl Module {
                 ModuleDef::Macro(m) => emit_macro_def_diagnostics(db, acc, m),
                 ModuleDef::TypeAlias(type_alias) => {
                     let tree_id = type_alias.id.lookup(db.upcast()).id;
-                    let tree_source_maps = tree_id.item_tree_with_source_map(db.upcast()).1;
+                    let tree_source_maps =
+                        tree_id.item_tree_with_source_map(db.upcast()).source_map;
                     push_ty_diagnostics(
                         db,
                         acc,
-                        db.type_for_type_alias_with_diagnostics(type_alias.id).1,
+                        db.type_for_type_alias_with_diagnostics(type_alias.id).diagnostics,
                         tree_source_maps.type_alias(tree_id.value).item(),
                     );
                     acc.extend(def.diagnostics(db, style_lints));
@@ -695,7 +703,8 @@ impl Module {
             GenericDef::Impl(impl_def).diagnostics(db, acc);
 
             let loc = impl_def.id.lookup(db.upcast());
-            let (tree, tree_source_maps) = loc.id.item_tree_with_source_map(db.upcast());
+            let res = loc.id.item_tree_with_source_map(db.upcast());
+            let (tree, tree_source_maps) = (res.item_tree, res.source_map);
             let source_map = tree_source_maps.impl_(loc.id.value).item();
             let node = &tree[loc.id.value];
             let file_id = loc.id.file_id();
@@ -711,7 +720,7 @@ impl Module {
 
             let ast_id_map = db.ast_id_map(file_id);
 
-            for diag in db.impl_data_with_diagnostics(impl_def.id).1.iter() {
+            for diag in db.impl_data_with_diagnostics(impl_def.id).diagnostics.iter() {
                 emit_def_diagnostic(db, acc, diag, edition);
             }
 
@@ -834,7 +843,7 @@ impl Module {
             push_ty_diagnostics(
                 db,
                 acc,
-                db.impl_self_ty_with_diagnostics(impl_def.id).1,
+                db.impl_self_ty_with_diagnostics(impl_def.id).diagnostics,
                 source_map,
             );
             push_ty_diagnostics(
@@ -1043,21 +1052,21 @@ fn emit_def_diagnostic_(
                     AttrOwner::Field(FieldParent::Variant(parent), idx) => process_field_list(
                         ast_id_map
                             .get(item_tree[parent].ast_id)
-                            .to_node(&db.parse_or_expand(tree.file_id()))
+                            .to_node(&hir_expand::db::parse_or_expand(db.upcast(), tree.file_id()))
                             .field_list(),
                         idx,
                     )?,
                     AttrOwner::Field(FieldParent::Struct(parent), idx) => process_field_list(
                         ast_id_map
                             .get(item_tree[parent.index()].ast_id)
-                            .to_node(&db.parse_or_expand(tree.file_id()))
+                            .to_node(&hir_expand::db::parse_or_expand(db.upcast(), tree.file_id()))
                             .field_list(),
                         idx,
                     )?,
                     AttrOwner::Field(FieldParent::Union(parent), idx) => SyntaxNodePtr::new(
                         ast_id_map
                             .get(item_tree[parent.index()].ast_id)
-                            .to_node(&db.parse_or_expand(tree.file_id()))
+                            .to_node(&hir_expand::db::parse_or_expand(db.upcast(), tree.file_id()))
                             .record_field_list()?
                             .fields()
                             .nth(idx.into_raw().into_u32() as usize)?
@@ -1066,7 +1075,7 @@ fn emit_def_diagnostic_(
                     AttrOwner::Param(parent, idx) => SyntaxNodePtr::new(
                         ast_id_map
                             .get(item_tree[parent.index()].ast_id)
-                            .to_node(&db.parse_or_expand(tree.file_id()))
+                            .to_node(&hir_expand::db::parse_or_expand(db.upcast(), tree.file_id()))
                             .param_list()?
                             .params()
                             .nth(idx.into_raw().into_u32() as usize)?
@@ -1075,7 +1084,7 @@ fn emit_def_diagnostic_(
                     AttrOwner::TypeOrConstParamData(parent, idx) => SyntaxNodePtr::new(
                         ast_id_map
                             .get(parent.ast_id(&item_tree))
-                            .to_node(&db.parse_or_expand(tree.file_id()))
+                            .to_node(&hir_expand::db::parse_or_expand(db.upcast(), tree.file_id()))
                             .generic_param_list()?
                             .type_or_const_params()
                             .nth(idx.into_raw().into_u32() as usize)?
@@ -1084,7 +1093,7 @@ fn emit_def_diagnostic_(
                     AttrOwner::LifetimeParamData(parent, idx) => SyntaxNodePtr::new(
                         ast_id_map
                             .get(parent.ast_id(&item_tree))
-                            .to_node(&db.parse_or_expand(tree.file_id()))
+                            .to_node(&hir_expand::db::parse_or_expand(db.upcast(), tree.file_id()))
                             .generic_param_list()?
                             .lifetime_params()
                             .nth(idx.into_raw().into_u32() as usize)?
@@ -1874,22 +1883,24 @@ impl DefWithBody {
     ) {
         let krate = self.module(db).id.krate();
 
-        let (body, source_map) = db.body_with_source_map(self.into());
+        let res = db.body_with_source_map(self.into());
+        let (body, source_map) = (res.body, res.source_map);
+
         let item_tree_source_maps;
         let outer_types_source_map = match self {
             DefWithBody::Function(function) => {
                 let function = function.id.lookup(db.upcast()).id;
-                item_tree_source_maps = function.item_tree_with_source_map(db.upcast()).1;
+                item_tree_source_maps = function.item_tree_with_source_map(db.upcast()).source_map;
                 item_tree_source_maps.function(function.value).item()
             }
             DefWithBody::Static(statik) => {
                 let statik = statik.id.lookup(db.upcast()).id;
-                item_tree_source_maps = statik.item_tree_with_source_map(db.upcast()).1;
+                item_tree_source_maps = statik.item_tree_with_source_map(db.upcast()).source_map;
                 item_tree_source_maps.statik(statik.value)
             }
             DefWithBody::Const(konst) => {
                 let konst = konst.id.lookup(db.upcast()).id;
-                item_tree_source_maps = konst.item_tree_with_source_map(db.upcast()).1;
+                item_tree_source_maps = konst.item_tree_with_source_map(db.upcast()).source_map;
                 item_tree_source_maps.konst(konst.value)
             }
             DefWithBody::Variant(_) | DefWithBody::InTypeConst(_) => &TypesSourceMap::EMPTY,
@@ -1924,7 +1935,7 @@ impl DefWithBody {
                         None
                     };
                     MacroError {
-                        node: (*node).map(|it| it.into()),
+                        node: (node).map(|it| it.into()),
                         precise_location,
                         message,
                         error,
@@ -1933,7 +1944,7 @@ impl DefWithBody {
                     .into()
                 }
                 BodyDiagnostic::UnresolvedMacroCall { node, path } => UnresolvedMacroCall {
-                    macro_call: (*node).map(|ast_ptr| ast_ptr.into()),
+                    macro_call: (node).map(|ast_ptr| ast_ptr.into()),
                     precise_location: None,
                     path: path.clone(),
                     is_bang: true,
@@ -3267,7 +3278,7 @@ fn as_assoc_item<'db, ID, DEF, LOC>(
     id: ID,
 ) -> Option<AssocItem>
 where
-    ID: Lookup<Database<'db> = dyn DefDatabase + 'db, Data = AssocItemLoc<LOC>>,
+    ID: Lookup<Database = dyn DefDatabase, Data = AssocItemLoc<LOC>>,
     DEF: From<ID>,
     LOC: ItemTreeNode,
 {
@@ -3283,7 +3294,7 @@ fn as_extern_assoc_item<'db, ID, DEF, LOC>(
     id: ID,
 ) -> Option<ExternAssocItem>
 where
-    ID: Lookup<Database<'db> = dyn DefDatabase + 'db, Data = AssocItemLoc<LOC>>,
+    ID: Lookup<Database = dyn DefDatabase, Data = AssocItemLoc<LOC>>,
     DEF: From<ID>,
     LOC: ItemTreeNode,
 {
@@ -3432,11 +3443,11 @@ impl AssocItem {
             AssocItem::TypeAlias(type_alias) => {
                 GenericDef::TypeAlias(type_alias).diagnostics(db, acc);
                 let tree_id = type_alias.id.lookup(db.upcast()).id;
-                let tree_source_maps = tree_id.item_tree_with_source_map(db.upcast()).1;
+                let tree_source_maps = tree_id.item_tree_with_source_map(db.upcast()).source_map;
                 push_ty_diagnostics(
                     db,
                     acc,
-                    db.type_for_type_alias_with_diagnostics(type_alias.id).1,
+                    db.type_for_type_alias_with_diagnostics(type_alias.id).diagnostics,
                     tree_source_maps.type_alias(tree_id.value).item(),
                 );
                 for diag in hir_ty::diagnostics::incorrect_case(db, type_alias.id.into()) {
@@ -3542,7 +3553,8 @@ impl GenericDef {
         let def = self.id();
 
         let item_tree_source_maps;
-        let (generics, generics_source_map) = db.generic_params_with_source_map(def);
+        let res = db.generic_params_with_source_map(def);
+        let (generics, generics_source_map) = (res.generic_params, res.source_map);
 
         if generics.is_empty() && generics.no_predicates() {
             return;
@@ -3553,53 +3565,58 @@ impl GenericDef {
             None => match def {
                 GenericDefId::FunctionId(it) => {
                     let id = it.lookup(db.upcast()).id;
-                    item_tree_source_maps = id.item_tree_with_source_map(db.upcast()).1;
+                    item_tree_source_maps = id.item_tree_with_source_map(db.upcast()).source_map;
                     item_tree_source_maps.function(id.value).generics()
                 }
                 GenericDefId::AdtId(AdtId::EnumId(it)) => {
                     let id = it.lookup(db.upcast()).id;
-                    item_tree_source_maps = id.item_tree_with_source_map(db.upcast()).1;
+                    item_tree_source_maps = id.item_tree_with_source_map(db.upcast()).source_map;
                     item_tree_source_maps.enum_generic(id.value)
                 }
                 GenericDefId::AdtId(AdtId::StructId(it)) => {
                     let id = it.lookup(db.upcast()).id;
-                    item_tree_source_maps = id.item_tree_with_source_map(db.upcast()).1;
+                    item_tree_source_maps = id.item_tree_with_source_map(db.upcast()).source_map;
                     item_tree_source_maps.strukt(id.value).generics()
                 }
                 GenericDefId::AdtId(AdtId::UnionId(it)) => {
                     let id = it.lookup(db.upcast()).id;
-                    item_tree_source_maps = id.item_tree_with_source_map(db.upcast()).1;
+                    item_tree_source_maps = id.item_tree_with_source_map(db.upcast()).source_map;
                     item_tree_source_maps.union(id.value).generics()
                 }
                 GenericDefId::TraitId(it) => {
                     let id = it.lookup(db.upcast()).id;
-                    item_tree_source_maps = id.item_tree_with_source_map(db.upcast()).1;
+                    item_tree_source_maps = id.item_tree_with_source_map(db.upcast()).source_map;
                     item_tree_source_maps.trait_generic(id.value)
                 }
                 GenericDefId::TraitAliasId(it) => {
                     let id = it.lookup(db.upcast()).id;
-                    item_tree_source_maps = id.item_tree_with_source_map(db.upcast()).1;
+                    item_tree_source_maps = id.item_tree_with_source_map(db.upcast()).source_map;
                     item_tree_source_maps.trait_alias_generic(id.value)
                 }
                 GenericDefId::TypeAliasId(it) => {
                     let id = it.lookup(db.upcast()).id;
-                    item_tree_source_maps = id.item_tree_with_source_map(db.upcast()).1;
+                    item_tree_source_maps = id.item_tree_with_source_map(db.upcast()).source_map;
                     item_tree_source_maps.type_alias(id.value).generics()
                 }
                 GenericDefId::ImplId(it) => {
                     let id = it.lookup(db.upcast()).id;
-                    item_tree_source_maps = id.item_tree_with_source_map(db.upcast()).1;
+                    item_tree_source_maps = id.item_tree_with_source_map(db.upcast()).source_map;
                     item_tree_source_maps.impl_(id.value).generics()
                 }
                 GenericDefId::ConstId(_) => return,
             },
         };
 
-        push_ty_diagnostics(db, acc, db.generic_defaults_with_diagnostics(def).1, source_map);
         push_ty_diagnostics(
             db,
             acc,
-            db.generic_predicates_without_parent_with_diagnostics(def).1,
+            db.generic_defaults_with_diagnostics(def).diagnostics,
+            source_map,
+        );
+        push_ty_diagnostics(
+            db,
+            acc,
+            db.generic_predicates_without_parent_with_diagnostics(def).diagnostics,
             source_map,
         );
         for (param_id, param) in generics.iter_type_or_consts() {
@@ -3610,7 +3627,7 @@ impl GenericDef {
                     db.const_param_ty_with_diagnostics(ConstParamId::from_unchecked(
                         TypeOrConstParamId { parent: def, local_id: param_id },
                     ))
-                    .1,
+                    .diagnostics,
                     source_map,
                 );
             }
@@ -3724,7 +3741,8 @@ impl Local {
 
     /// All definitions for this local. Example: `let (a$0, _) | (_, a$0) = it;`
     pub fn sources(self, db: &dyn HirDatabase) -> Vec<LocalSource> {
-        let (body, source_map) = db.body_with_source_map(self.parent);
+        let res = db.body_with_source_map(self.parent);
+        let (body, source_map) = (res.body, res.source_map);
         match body.self_param.zip(source_map.self_param_syntax()) {
             Some((param, source)) if param == self.binding_id => {
                 let root = source.file_syntax(db.upcast());
@@ -3753,7 +3771,8 @@ impl Local {
 
     /// The leftmost definition for this local. Example: `let (a$0, _) | (_, a) = it;`
     pub fn primary_source(self, db: &dyn HirDatabase) -> LocalSource {
-        let (body, source_map) = db.body_with_source_map(self.parent);
+        let res = db.body_with_source_map(self.parent);
+        let (body, source_map) = (res.body, res.source_map);
         match body.self_param.zip(source_map.self_param_syntax()) {
             Some((param, source)) if param == self.binding_id => {
                 let root = source.file_syntax(db.upcast());
@@ -4493,7 +4512,9 @@ pub struct CaptureUsages {
 
 impl CaptureUsages {
     pub fn sources(&self, db: &dyn HirDatabase) -> Vec<CaptureUsageSource> {
-        let (body, source_map) = db.body_with_source_map(self.parent);
+        let res = db.body_with_source_map(self.parent);
+        let (body, source_map) = (res.body, res.source_map);
+
         let mut result = Vec::with_capacity(self.spans.len());
         for &span in self.spans.iter() {
             let is_ref = span.is_ref_span(&body);

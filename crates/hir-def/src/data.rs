@@ -245,16 +245,22 @@ pub struct TraitData {
     pub macro_calls: Option<Box<Vec<(AstId<ast::Item>, MacroCallId)>>>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TraitAndDiagnostics {
+    pub trait_data: Arc<TraitData>,
+    pub diagnostics: DefDiagnostics,
+}
+
 impl TraitData {
     #[inline]
     pub(crate) fn trait_data_query(db: &dyn DefDatabase, tr: TraitId) -> Arc<TraitData> {
-        db.trait_data_with_diagnostics(tr).0
+        db.trait_data_with_diagnostics(tr).trait_data
     }
 
     pub(crate) fn trait_data_with_diagnostics_query(
         db: &dyn DefDatabase,
         tr: TraitId,
-    ) -> (Arc<TraitData>, DefDiagnostics) {
+    ) -> TraitAndDiagnostics {
         let ItemLoc { container: module_id, id: tree_id } = tr.lookup(db);
         let item_tree = tree_id.item_tree(db);
         let tr_def = &item_tree[tree_id.value];
@@ -282,8 +288,8 @@ impl TraitData {
         collector.collect(&item_tree, tree_id.tree_id(), &tr_def.items);
         let (items, macro_calls, diagnostics) = collector.finish();
 
-        (
-            Arc::new(TraitData {
+        TraitAndDiagnostics {
+            trait_data: Arc::new(TraitData {
                 name,
                 macro_calls,
                 items,
@@ -295,8 +301,8 @@ impl TraitData {
                 rustc_has_incoherent_inherent_impls,
                 fundamental,
             }),
-            DefDiagnostics::new(diagnostics),
-        )
+            diagnostics: DefDiagnostics::new(diagnostics),
+        }
     }
 
     pub fn associated_types(&self) -> impl Iterator<Item = TypeAliasId> + '_ {
@@ -354,16 +360,22 @@ pub struct ImplData {
     pub types_map: Arc<TypesMap>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImplAndDiagnostics {
+    pub impl_data: Arc<ImplData>,
+    pub diagnostics: DefDiagnostics,
+}
+
 impl ImplData {
     #[inline]
     pub(crate) fn impl_data_query(db: &dyn DefDatabase, id: ImplId) -> Arc<ImplData> {
-        db.impl_data_with_diagnostics(id).0
+        db.impl_data_with_diagnostics(id).impl_data
     }
 
     pub(crate) fn impl_data_with_diagnostics_query(
         db: &dyn DefDatabase,
         id: ImplId,
-    ) -> (Arc<ImplData>, DefDiagnostics) {
+    ) -> ImplAndDiagnostics {
         let _p = tracing::info_span!("impl_data_with_diagnostics_query").entered();
         let ItemLoc { container: module_id, id: tree_id } = id.lookup(db);
 
@@ -381,8 +393,8 @@ impl ImplData {
         let (items, macro_calls, diagnostics) = collector.finish();
         let items = items.into_iter().map(|(_, item)| item).collect();
 
-        (
-            Arc::new(ImplData {
+        ImplAndDiagnostics {
+            impl_data: Arc::new(ImplData {
                 target_trait,
                 self_ty,
                 items,
@@ -391,8 +403,8 @@ impl ImplData {
                 macro_calls,
                 types_map: impl_def.types_map.clone(),
             }),
-            DefDiagnostics::new(diagnostics),
-        )
+            diagnostics: DefDiagnostics::new(diagnostics),
+        }
     }
 
     pub fn attribute_calls(&self) -> impl Iterator<Item = (AstId<ast::Item>, MacroCallId)> + '_ {

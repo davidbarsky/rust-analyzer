@@ -380,7 +380,7 @@ impl MirEvalError {
                         writeln!(f, "In {closure:?}")?;
                     }
                 }
-                let source_map = db.body_with_source_map(*def).1;
+                let source_map = db.body_with_source_map(*def).source_map;
                 let span: InFile<SyntaxNodePtr> = match span {
                     MirSpan::ExprId(e) => match source_map.expr_syntax(*e) {
                         Ok(s) => s.map(|it| it.into()),
@@ -2553,8 +2553,9 @@ impl Evaluator<'_> {
         {
             MirOrDynIndex::Dyn(self_ty_idx)
         } else {
-            let (imp, generic_args) =
-                self.db.lookup_impl_method(self.trait_env.clone(), def, generic_args.clone());
+            let res = self.db.lookup_impl_method(self.trait_env.clone(), def, generic_args.clone());
+            let (imp, generic_args) = (res.function_id, res.subst);
+
             let mir_body = self
                 .db
                 .monomorphized_mir_body(imp.into(), generic_args, self.trait_env.clone())

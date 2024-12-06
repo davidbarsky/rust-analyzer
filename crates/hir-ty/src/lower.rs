@@ -11,7 +11,7 @@ use std::{
     ops::{self, Not as _},
 };
 
-use base_db::{ra_salsa::Cycle, CrateId};
+use base_db::CrateId;
 use chalk_ir::{
     cast::Cast,
     fold::{Shift, TypeFoldable},
@@ -45,6 +45,7 @@ use hir_expand::{name::Name, ExpandResult};
 use la_arena::{Arena, ArenaMap};
 use rustc_hash::FxHashSet;
 use rustc_pattern_analysis::Captures;
+use salsa::Cycle;
 use smallvec::SmallVec;
 use stdx::{impl_from, never};
 use syntax::ast;
@@ -56,7 +57,7 @@ use crate::{
         intern_const_ref, intern_const_scalar, path_to_const, unknown_const,
         unknown_const_as_generic,
     },
-    db::HirDatabase,
+    db::{HirDatabase, HirDatabaseData},
     error_lifetime,
     generics::{generics, trait_self_param_idx, Generics},
     make_binders,
@@ -1662,14 +1663,20 @@ pub(crate) fn field_types_query(
     db: &dyn HirDatabase,
     variant_id: VariantId,
 ) -> Arc<ArenaMap<LocalFieldId, Binders<Ty>>> {
-    db.field_types_with_diagnostics(variant_id).0
+    db.field_types_with_diagnostics(variant_id).ty
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FieldTypesAndDiagnostics {
+    pub ty: Arc<ArenaMap<LocalFieldId, Binders<Ty>>>,
+    pub diagnostics: Diagnostics,
 }
 
 /// Build the type of all specific fields of a struct or enum variant.
 pub(crate) fn field_types_with_diagnostics_query(
     db: &dyn HirDatabase,
     variant_id: VariantId,
-) -> (Arc<ArenaMap<LocalFieldId, Binders<Ty>>>, Diagnostics) {
+) -> FieldTypesAndDiagnostics {
     let var_data = variant_id.variant_data(db.upcast());
     let (resolver, def): (_, GenericDefId) = match variant_id {
         VariantId::StructId(it) => (it.resolver(db.upcast()), it.into()),
@@ -1685,7 +1692,7 @@ pub(crate) fn field_types_with_diagnostics_query(
     for (field_id, field_data) in var_data.fields().iter() {
         res.insert(field_id, make_binders(db, &generics, ctx.lower_ty(field_data.type_ref)));
     }
-    (Arc::new(res), create_diagnostics(ctx.diagnostics))
+    FieldTypesAndDiagnostics { ty: Arc::new(res), diagnostics: create_diagnostics(ctx.diagnostics) }
 }
 
 /// This query exists only to be used when resolving short-hand associated types
@@ -1792,10 +1799,11 @@ pub(crate) fn generic_predicates_for_param_query(
 
 pub(crate) fn generic_predicates_for_param_recover(
     _db: &dyn HirDatabase,
-    _cycle: &Cycle,
-    _def: &GenericDefId,
-    _param_id: &TypeOrConstParamId,
-    _assoc_name: &Option<Name>,
+    _cycle: &salsa::Cycle,
+    _: HirDatabaseData,
+    _def: GenericDefId,
+    _param_id: TypeOrConstParamId,
+    _assoc_name: Option<Name>,
 ) -> GenericPredicates {
     GenericPredicates(None)
 }
@@ -1886,14 +1894,20 @@ pub(crate) fn generic_predicates_query(
     db: &dyn HirDatabase,
     def: GenericDefId,
 ) -> GenericPredicates {
-    generic_predicates_filtered_by(db, def, |_, _| true).0
+    generic_predicates_filtered_by(db, def, |_, _| true).generics
 }
 
 pub(crate) fn generic_predicates_without_parent_query(
     db: &dyn HirDatabase,
     def: GenericDefId,
 ) -> GenericPredicates {
-    db.generic_predicates_without_parent_with_diagnostics(def).0
+    db.generic_predicates_without_parent_with_diagnostics(def).generics
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GenericPredicatesAndDiagnostics {
+    pub generics: GenericPredicates,
+    pub diagnostics: Diagnostics,
 }
 
 /// Resolve the where clause(s) of an item with generics,
@@ -1901,7 +1915,7 @@ pub(crate) fn generic_predicates_without_parent_query(
 pub(crate) fn generic_predicates_without_parent_with_diagnostics_query(
     db: &dyn HirDatabase,
     def: GenericDefId,
-) -> (GenericPredicates, Diagnostics) {
+) -> GenericPredicatesAndDiagnostics {
     generic_predicates_filtered_by(db, def, |_, d| *d == def)
 }
 
@@ -1911,7 +1925,7 @@ fn generic_predicates_filtered_by<F>(
     db: &dyn HirDatabase,
     def: GenericDefId,
     filter: F,
-) -> (GenericPredicates, Diagnostics)
+) -> GenericPredicatesAndDiagnostics
 where
     F: Fn(&WherePredicate, &GenericDefId) -> bool,
 {
@@ -1952,10 +1966,11 @@ where
             );
         };
     }
-    (
-        GenericPredicates(predicates.is_empty().not().then(|| predicates.into())),
-        create_diagnostics(ctx.diagnostics),
-    )
+
+    GenericPredicatesAndDiagnostics {
+        generics: GenericPredicates(predicates.is_empty().not().then(|| predicates.into())),
+        diagnostics: create_diagnostics(ctx.diagnostics),
+    }
 }
 
 /// Generate implicit `: Sized` predicates for all generics that has no `?Sized` bound.
@@ -2009,7 +2024,13 @@ impl ops::Deref for GenericDefaults {
 }
 
 pub(crate) fn generic_defaults_query(db: &dyn HirDatabase, def: GenericDefId) -> GenericDefaults {
-    db.generic_defaults_with_diagnostics(def).0
+    db.generic_defaults_with_diagnostics(def).defaults
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GenericDefaultsAndDiagnostics {
+    pub defaults: GenericDefaults,
+    pub diagnostics: Diagnostics,
 }
 
 /// Resolve the default type params from generics.
@@ -2018,10 +2039,13 @@ pub(crate) fn generic_defaults_query(db: &dyn HirDatabase, def: GenericDefId) ->
 pub(crate) fn generic_defaults_with_diagnostics_query(
     db: &dyn HirDatabase,
     def: GenericDefId,
-) -> (GenericDefaults, Diagnostics) {
+) -> GenericDefaultsAndDiagnostics {
     let generic_params = generics(db.upcast(), def);
     if generic_params.len() == 0 {
-        return (GenericDefaults(None), None);
+        return GenericDefaultsAndDiagnostics {
+            defaults: GenericDefaults(None),
+            diagnostics: None,
+        };
     }
     let resolver = def.resolver(db.upcast());
     let parent_start_idx = generic_params.len_self();
@@ -2048,7 +2072,7 @@ pub(crate) fn generic_defaults_with_diagnostics_query(
         result
     }));
     let defaults = GenericDefaults(Some(Arc::from_iter(defaults)));
-    return (defaults, diagnostics);
+    return GenericDefaultsAndDiagnostics { defaults, diagnostics };
 
     fn handle_generic_param(
         ctx: &mut TyLoweringContext<'_>,
@@ -2095,11 +2119,15 @@ pub(crate) fn generic_defaults_with_diagnostics_query(
 pub(crate) fn generic_defaults_with_diagnostics_recover(
     db: &dyn HirDatabase,
     _cycle: &Cycle,
-    def: &GenericDefId,
-) -> (GenericDefaults, Diagnostics) {
-    let generic_params = generics(db.upcast(), *def);
+    _: HirDatabaseData,
+    def: GenericDefId,
+) -> GenericDefaultsAndDiagnostics {
+    let generic_params = generics(db.upcast(), def);
     if generic_params.len() == 0 {
-        return (GenericDefaults(None), None);
+        return GenericDefaultsAndDiagnostics {
+            defaults: GenericDefaults(None),
+            diagnostics: None,
+        };
     }
     // FIXME: this code is not covered in tests.
     // we still need one default per parameter
@@ -2111,7 +2139,7 @@ pub(crate) fn generic_defaults_with_diagnostics_recover(
         };
         crate::make_binders(db, &generic_params, val)
     }))));
-    (defaults, None)
+    GenericDefaultsAndDiagnostics { defaults, diagnostics: None }
 }
 
 fn fn_sig_for_fn(db: &dyn HirDatabase, def: FunctionId) -> PolyFnSig {
@@ -2257,7 +2285,7 @@ fn type_for_adt(db: &dyn HirDatabase, adt: AdtId) -> Binders<Ty> {
 pub(crate) fn type_for_type_alias_with_diagnostics_query(
     db: &dyn HirDatabase,
     t: TypeAliasId,
-) -> (Binders<Ty>, Diagnostics) {
+) -> BindersTyAndDiagnostics {
     let generics = generics(db.upcast(), t.into());
     let resolver = t.resolver(db.upcast());
     let type_alias_data = db.type_alias_data(t);
@@ -2272,7 +2300,10 @@ pub(crate) fn type_for_type_alias_with_diagnostics_query(
             .map(|type_ref| ctx.lower_ty(type_ref))
             .unwrap_or_else(|| TyKind::Error.intern(Interner))
     };
-    (make_binders(db, &generics, inner), create_diagnostics(ctx.diagnostics))
+    BindersTyAndDiagnostics {
+        binders: make_binders(db, &generics, inner),
+        diagnostics: create_diagnostics(ctx.diagnostics),
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -2315,12 +2346,17 @@ pub(crate) fn ty_query(db: &dyn HirDatabase, def: TyDefId) -> Binders<Ty> {
     match def {
         TyDefId::BuiltinType(it) => Binders::empty(Interner, TyBuilder::builtin(it)),
         TyDefId::AdtId(it) => type_for_adt(db, it),
-        TyDefId::TypeAliasId(it) => db.type_for_type_alias_with_diagnostics(it).0,
+        TyDefId::TypeAliasId(it) => db.type_for_type_alias_with_diagnostics(it).binders,
     }
 }
 
-pub(crate) fn ty_recover(db: &dyn HirDatabase, _cycle: &Cycle, def: &TyDefId) -> Binders<Ty> {
-    let generics = match *def {
+pub(crate) fn ty_recover(
+    db: &dyn HirDatabase,
+    _cycle: &salsa::Cycle,
+    _: HirDatabaseData,
+    def: TyDefId,
+) -> Binders<Ty> {
+    let generics = match def {
         TyDefId::BuiltinType(_) => return Binders::empty(Interner, TyKind::Error.intern(Interner)),
         TyDefId::AdtId(it) => generics(db.upcast(), it.into()),
         TyDefId::TypeAliasId(it) => generics(db.upcast(), it.into()),
@@ -2340,33 +2376,39 @@ pub(crate) fn value_ty_query(db: &dyn HirDatabase, def: ValueTyDefId) -> Option<
 }
 
 pub(crate) fn impl_self_ty_query(db: &dyn HirDatabase, impl_id: ImplId) -> Binders<Ty> {
-    db.impl_self_ty_with_diagnostics(impl_id).0
+    db.impl_self_ty_with_diagnostics(impl_id).binders
 }
 
 pub(crate) fn impl_self_ty_with_diagnostics_query(
     db: &dyn HirDatabase,
     impl_id: ImplId,
-) -> (Binders<Ty>, Diagnostics) {
+) -> BindersTyAndDiagnostics {
     let impl_data = db.impl_data(impl_id);
     let resolver = impl_id.resolver(db.upcast());
     let generics = generics(db.upcast(), impl_id.into());
     let mut ctx = TyLoweringContext::new(db, &resolver, &impl_data.types_map, impl_id.into())
         .with_type_param_mode(ParamLoweringMode::Variable);
-    (
-        make_binders(db, &generics, ctx.lower_ty(impl_data.self_ty)),
-        create_diagnostics(ctx.diagnostics),
-    )
+    BindersTyAndDiagnostics {
+        binders: make_binders(db, &generics, ctx.lower_ty(impl_data.self_ty)),
+        diagnostics: create_diagnostics(ctx.diagnostics),
+    }
 }
 
 pub(crate) fn const_param_ty_query(db: &dyn HirDatabase, def: ConstParamId) -> Ty {
-    db.const_param_ty_with_diagnostics(def).0
+    db.const_param_ty_with_diagnostics(def).ty
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TyAndDiagnostics {
+    pub ty: Ty,
+    pub diagnostics: Diagnostics,
 }
 
 // returns None if def is a type arg
 pub(crate) fn const_param_ty_with_diagnostics_query(
     db: &dyn HirDatabase,
     def: ConstParamId,
-) -> (Ty, Diagnostics) {
+) -> TyAndDiagnostics {
     let parent_data = db.generic_params(def.parent());
     let data = &parent_data[def.local_id()];
     let resolver = def.parent().resolver(db.upcast());
@@ -2379,16 +2421,26 @@ pub(crate) fn const_param_ty_with_diagnostics_query(
         }
         TypeOrConstParamData::ConstParamData(d) => ctx.lower_ty(d.ty),
     };
-    (ty, create_diagnostics(ctx.diagnostics))
+    TyAndDiagnostics { ty, diagnostics: create_diagnostics(ctx.diagnostics) }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BindersTyAndDiagnostics {
+    pub binders: Binders<Ty>,
+    pub diagnostics: Diagnostics,
 }
 
 pub(crate) fn impl_self_ty_with_diagnostics_recover(
     db: &dyn HirDatabase,
-    _cycle: &Cycle,
-    impl_id: &ImplId,
-) -> (Binders<Ty>, Diagnostics) {
-    let generics = generics(db.upcast(), (*impl_id).into());
-    (make_binders(db, &generics, TyKind::Error.intern(Interner)), None)
+    _cycle: &salsa::Cycle,
+    _: HirDatabaseData,
+    impl_id: ImplId,
+) -> BindersTyAndDiagnostics {
+    let generics = generics(db.upcast(), (impl_id).into());
+    BindersTyAndDiagnostics {
+        binders: make_binders(db, &generics, TyKind::Error.intern(Interner)),
+        diagnostics: None,
+    }
 }
 
 pub(crate) fn impl_trait_query(db: &dyn HirDatabase, impl_id: ImplId) -> Option<Binders<TraitRef>> {

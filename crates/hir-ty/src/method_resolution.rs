@@ -676,6 +676,12 @@ pub fn is_dyn_method(
     None
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ImplMethodAndSubst {
+    pub function_id: FunctionId,
+    pub subst: Substitution,
+}
+
 /// Looks up the impl method that actually runs for the trait method `func`.
 ///
 /// Returns `func` if it's not a method defined in a trait or the lookup failed.
@@ -684,9 +690,9 @@ pub(crate) fn lookup_impl_method_query(
     env: Arc<TraitEnvironment>,
     func: FunctionId,
     fn_subst: Substitution,
-) -> (FunctionId, Substitution) {
+) -> ImplMethodAndSubst {
     let ItemContainerId::TraitId(trait_id) = func.lookup(db.upcast()).container else {
-        return (func, fn_subst);
+        return ImplMethodAndSubst { function_id: func, subst: fn_subst };
     };
     let trait_params = db.generic_params(trait_id.into()).len();
     let fn_params = fn_subst.len(Interner) - trait_params;
@@ -705,15 +711,16 @@ pub(crate) fn lookup_impl_method_query(
             }
         })
     else {
-        return (func, fn_subst);
+        return ImplMethodAndSubst { function_id: func, subst: fn_subst };
     };
-    (
-        impl_fn,
-        Substitution::from_iter(
+
+    ImplMethodAndSubst {
+        function_id: impl_fn,
+        subst: Substitution::from_iter(
             Interner,
             fn_subst.iter(Interner).take(fn_params).chain(impl_subst.iter(Interner)),
         ),
-    )
+    }
 }
 
 fn lookup_impl_assoc_item_for_trait_ref(

@@ -1,4 +1,4 @@
-use hir::{db::ExpandDatabase, HirFileIdExt, InFile};
+use hir::{HirFileIdExt, InFile};
 use ide_db::source_change::SourceChange;
 use ide_db::text_edit::TextEdit;
 use syntax::{
@@ -28,7 +28,7 @@ fn fixes(
     ctx: &DiagnosticsContext<'_>,
     d: &hir::ReplaceFilterMapNextWithFindMap,
 ) -> Option<Vec<Assist>> {
-    let root = ctx.sema.db.parse_or_expand(d.file);
+    let root = hir::parse_or_expand(ctx.sema.db, d.file);
     let next_expr = d.next_expr.to_node(&root);
     let next_call = ast::MethodCallExpr::cast(next_expr.syntax().clone())?;
 

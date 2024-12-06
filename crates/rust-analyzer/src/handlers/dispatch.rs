@@ -4,7 +4,7 @@ use std::{
     panic, thread,
 };
 
-use ide::Cancelled;
+use ide_db::base_db::salsa::Cancelled;
 use lsp_server::{ExtractError, Response, ResponseError};
 use serde::{de::DeserializeOwned, Serialize};
 use stdx::thread::ThreadIntent;
