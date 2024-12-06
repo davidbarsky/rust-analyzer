@@ -604,7 +604,7 @@ impl Module {
                 ModuleDef::Adt(adt) => {
                     match adt {
                         Adt::Struct(s) => {
-                            for diag in db.struct_data_with_diagnostics(s.id).1.iter() {
+                            for diag in db.struct_data_with_diagnostics(s.id).diagnostics.iter() {
                                 emit_def_diagnostic(db, acc, diag, edition);
                             }
                         }

@@ -24,6 +24,7 @@ pub use crate::{
 };
 pub use db_ext_macro::{self};
 pub use ra_salsa::{self, Cancelled};
+pub use salsa::{self};
 pub use vfs::{file_set::FileSet, AnchoredPath, AnchoredPathBuf, VfsPath};
 
 pub use semver::{BuildMetadata, Prerelease, Version, VersionReq};
@@ -31,12 +32,15 @@ pub use semver::{BuildMetadata, Prerelease, Version, VersionReq};
 #[macro_export]
 macro_rules! impl_intern_key {
     ($name:ident) => {
-        impl $crate::ra_salsa::InternKey for $name {
-            fn from_intern_id(v: $crate::ra_salsa::InternId) -> Self {
-                $name(v)
-            }
-            fn as_intern_id(&self) -> $crate::ra_salsa::InternId {
+        impl $crate::salsa::plumbing::AsId for $name {
+            fn as_id(&self) -> $crate::salsa::Id {
                 self.0
+            }
+        }
+
+        impl $crate::salsa::plumbing::FromId for $name {
+            fn from_id(id: salsa::Id) -> Self {
+                $name(id)
             }
         }
     };
