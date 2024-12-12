@@ -463,7 +463,7 @@ fn main() {
 "#,
         expect![[r#"
             ```rust
-            {closure#0}
+            {closure#37888}
             impl FnOnce() -> S2
             ```
             ___
