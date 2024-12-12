@@ -7,7 +7,7 @@ use crate::{
 };
 use hir::{AsAssocItem, AssocItem, FileRange, InFile, MacroFileIdExt, ModuleDef, Semantics};
 use ide_db::{
-    base_db::{AnchoredPath, FileLoader, RootQueryDb, SourceDatabase, Upcast},
+    base_db::{AnchoredPath, RootQueryDb, SourceDatabase, Upcast},
     defs::{Definition, IdentClass},
     helpers::pick_best_token,
     RootDatabase, SymbolKind,
