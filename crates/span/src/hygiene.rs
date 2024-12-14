@@ -106,14 +106,6 @@ pub struct SyntaxContextData {
     pub opaque_and_semitransparent: SyntaxContextId,
 }
 
-impl ra_salsa::InternValue for SyntaxContextData {
-    type Key = (SyntaxContextId, Option<MacroCallId>, Transparency);
-
-    fn into_key(&self) -> Self::Key {
-        (self.parent, self.outer_expn, self.outer_transparency)
-    }
-}
-
 impl std::fmt::Debug for SyntaxContextData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SyntaxContextData")

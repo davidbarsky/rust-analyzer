@@ -12,7 +12,6 @@ pub use crate::{
     },
 };
 pub use db_ext_macro::{self};
-pub use ra_salsa::InternValueTrivial;
 use rustc_hash::FxHashMap;
 use salsa::Durability;
 pub use salsa::{self};

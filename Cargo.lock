@@ -100,8 +100,7 @@ dependencies = [
  "la-arena 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "lz4_flex",
  "rustc-hash 2.0.0",
- "salsa 0.0.0",
- "salsa 0.18.0",
+ "salsa",
  "semver",
  "span",
  "stdx",
@@ -389,10 +388,10 @@ name = "db-ext-macro"
 version = "0.1.0"
 source = "git+https://github.com/davidbarsky/db-ext-macro.git?rev=d9d1c7e2e2bed618483d198a903f97b487426f4b#d9d1c7e2e2bed618483d198a903f97b487426f4b"
 dependencies = [
- "heck 0.5.0",
+ "heck",
  "proc-macro2",
  "quote",
- "salsa 0.18.0",
+ "salsa",
  "syn",
  "synstructure",
 ]
@@ -589,12 +588,6 @@ dependencies = [
 
 [[package]]
 name = "heck"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "95505c38b4572b2d910cecb0281560f54b440a19336cbbcb27bf6ce6adc6f5a8"
-
-[[package]]
-name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
@@ -659,7 +652,7 @@ dependencies = [
  "ra-ap-rustc_parse_format",
  "rustc-hash 2.0.0",
  "rustc_apfloat",
- "salsa 0.18.0",
+ "salsa",
  "smallvec",
  "span",
  "stdx",
@@ -692,7 +685,7 @@ dependencies = [
  "mbe",
  "parser",
  "rustc-hash 2.0.0",
- "salsa 0.18.0",
+ "salsa",
  "smallvec",
  "span",
  "stdx",
@@ -735,7 +728,7 @@ dependencies = [
  "ra-ap-rustc_pattern_analysis",
  "rustc-hash 2.0.0",
  "rustc_apfloat",
- "salsa 0.18.0",
+ "salsa",
  "scoped-tls",
  "smallvec",
  "span",
@@ -856,7 +849,7 @@ dependencies = [
  "profile",
  "rayon",
  "rustc-hash 2.0.0",
- "salsa 0.18.0",
+ "salsa",
  "span",
  "stdx",
  "syntax",
@@ -1072,12 +1065,6 @@ dependencies = [
  "nohash-hasher",
  "text-size",
 ]
-
-[[package]]
-name = "linked-hash-map"
-version = "0.5.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0717cef1bc8b636c6e1c1bbdefc09e6322da8a9321966e8928ef80d20f7f770f"
 
 [[package]]
 name = "load-cargo"
@@ -1447,15 +1434,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "439ee305def115ba05938db6eb1644ff94165c5ab5e9420d1c1bcedbba909391"
 
 [[package]]
-name = "ppv-lite86"
-version = "0.2.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77957b295656769bb8ad2b6a6b09d897d94f05c41b069aede1fcdaa675eaea04"
-dependencies = [
- "zerocopy",
-]
-
-[[package]]
 name = "proc-macro-api"
 version = "0.0.0"
 dependencies = [
@@ -1678,36 +1656,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rand"
-version = "0.8.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34af8d1a0e25924bc5b7c43c079c942339d8f0a8b57c39049bef581b46327404"
-dependencies = [
- "libc",
- "rand_chacha",
- "rand_core",
-]
-
-[[package]]
-name = "rand_chacha"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6c10a63a0fa32252be49d21e7709d4d4baf8d231c2dbce1eaa8141b9b127d88"
-dependencies = [
- "ppv-lite86",
- "rand_core",
-]
-
-[[package]]
-name = "rand_core"
-version = "0.6.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
-dependencies = [
- "getrandom",
-]
-
-[[package]]
 name = "rayon"
 version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1860,26 +1808,6 @@ checksum = "f3cb5ba0dc43242ce17de99c180e96db90b235b8a9fdc9543c96d2209116bd9f"
 
 [[package]]
 name = "salsa"
-version = "0.0.0"
-dependencies = [
- "dissimilar",
- "expect-test",
- "indexmap",
- "itertools",
- "linked-hash-map",
- "lock_api",
- "oorandom",
- "parking_lot",
- "rand",
- "rustc-hash 2.0.0",
- "salsa-macros 0.0.0",
- "smallvec",
- "tracing",
- "triomphe",
-]
-
-[[package]]
-name = "salsa"
 version = "0.18.0"
 source = "git+https://github.com/davidbarsky/salsa.git?rev=d609b9ba7c61a1ed7c09142fa5ded6e0ceddb174#d609b9ba7c61a1ed7c09142fa5ded6e0ceddb174"
 dependencies = [
@@ -1894,7 +1822,7 @@ dependencies = [
  "rayon",
  "rustc-hash 2.0.0",
  "salsa-macro-rules",
- "salsa-macros 0.18.0",
+ "salsa-macros",
  "smallvec",
  "tracing",
 ]
@@ -1906,20 +1834,10 @@ source = "git+https://github.com/davidbarsky/salsa.git?rev=d609b9ba7c61a1ed7c091
 
 [[package]]
 name = "salsa-macros"
-version = "0.0.0"
-dependencies = [
- "heck 0.4.1",
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
-name = "salsa-macros"
 version = "0.18.0"
 source = "git+https://github.com/davidbarsky/salsa.git?rev=d609b9ba7c61a1ed7c09142fa5ded6e0ceddb174#d609b9ba7c61a1ed7c09142fa5ded6e0ceddb174"
 dependencies = [
- "heck 0.5.0",
+ "heck",
  "proc-macro2",
  "quote",
  "syn",
@@ -2056,8 +1974,7 @@ dependencies = [
  "hashbrown",
  "la-arena 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "rustc-hash 2.0.0",
- "salsa 0.0.0",
- "salsa 0.18.0",
+ "salsa",
  "stdx",
  "syntax",
  "text-size",
@@ -2069,12 +1986,6 @@ name = "sptr"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3b9b39299b249ad65f3b7e96443bad61c02ca5cd3589f46cb6d610a0fd6c0d6a"
-
-[[package]]
-name = "stable_deref_trait"
-version = "1.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 
 [[package]]
 name = "stdx"
@@ -2413,10 +2324,6 @@ name = "triomphe"
 version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6631e42e10b40c0690bf92f404ebcfe6e1fdb480391d15f17cc8e96eeed5369"
-dependencies = [
- "serde",
- "stable_deref_trait",
-]
 
 [[package]]
 name = "tt"
@@ -2834,7 +2741,6 @@ version = "0.7.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1b9b4fd18abc82b8136838da5d50bae7bdea537c574d8dc1a34ed098d6c166f0"
 dependencies = [
- "byteorder",
  "zerocopy-derive",
 ]
 

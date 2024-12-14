@@ -1,4 +1,3 @@
-use hir::db::ExpandDatabase;
 use hir::{HirFileIdExt, UnsafetyReason};
 use ide_db::text_edit::TextEdit;
 use ide_db::{assists::Assist, source_change::SourceChange};
