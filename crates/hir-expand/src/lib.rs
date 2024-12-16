@@ -35,7 +35,7 @@ use base_db::CrateId;
 use either::Either;
 use span::{
     Edition, EditionedFileId, ErasedFileAstId, FileAstId, HirFileIdRepr, Span, SpanAnchor,
-    SyntaxContextData, SyntaxContextId,
+    SyntaxContextId,
 };
 use syntax::{
     ast::{self, AstNode},
@@ -118,14 +118,6 @@ impl_intern_lookup!(
     MacroCallLoc,
     intern_macro_call,
     lookup_intern_macro_call
-);
-
-impl_intern_lookup!(
-    ExpandDatabase,
-    SyntaxContextId,
-    SyntaxContextData,
-    intern_syntax_context,
-    lookup_intern_syntax_context
 );
 
 pub type ExpandResult<T> = ValueResult<T, ExpandError>;
