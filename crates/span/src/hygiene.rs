@@ -24,8 +24,14 @@ use std::fmt;
 use crate::MacroCallId;
 
 /// Interned [`SyntaxContextData`].
-#[derive(Clone, Copy, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Eq, PartialOrd, Ord)]
 pub struct SyntaxContextId(pub salsa::Id);
+
+impl std::hash::Hash for SyntaxContextId {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
+    }
+}
 
 impl PartialEq for SyntaxContextId {
     fn eq(&self, other: &Self) -> bool {

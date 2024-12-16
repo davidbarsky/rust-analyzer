@@ -98,7 +98,7 @@ impl SourceDatabase for TestDB {
     }
 
     fn set_file_text(&self, file_id: vfs::FileId, text: &str) {
-        self.files.insert(file_id, FileText::new(self, file_id, Arc::from(text)));
+        self.files.insert(file_id, FileText::new(self, Arc::from(text)));
     }
 
     fn set_file_text_with_durability(
@@ -107,10 +107,8 @@ impl SourceDatabase for TestDB {
         text: &str,
         durability: Durability,
     ) {
-        self.files.insert(
-            file_id,
-            FileText::builder(file_id, Arc::from(text)).durability(durability).new(self),
-        );
+        self.files
+            .insert(file_id, FileText::builder(Arc::from(text)).durability(durability).new(self));
     }
 
     fn file_source_root(&self, id: vfs::FileId) -> FileSourceRootInput {
@@ -127,8 +125,7 @@ impl SourceDatabase for TestDB {
         source_root_id: SourceRootId,
         durability: Durability,
     ) {
-        let input =
-            FileSourceRootInput::builder(id, source_root_id).durability(durability).new(self);
+        let input = FileSourceRootInput::builder(source_root_id).durability(durability).new(self);
         self.file_source_roots.insert(id, input);
     }
 
@@ -146,8 +143,7 @@ impl SourceDatabase for TestDB {
         source_root: Arc<SourceRoot>,
         durability: Durability,
     ) {
-        let input =
-            SourceRootInput::builder(source_root_id, source_root).durability(durability).new(self);
+        let input = SourceRootInput::builder(source_root).durability(durability).new(self);
         self.source_roots.insert(source_root_id, input);
     }
 
@@ -162,9 +158,7 @@ impl SourceDatabase for TestDB {
     fn relevant_crates(&self, file_id: FileId) -> Arc<[CrateId]> {
         let _p = tracing::info_span!("relevant_crates").entered();
 
-        let file_id = self.file_text(file_id).file_id(self);
-        let source_root_id = self.file_source_root(file_id);
-        let source_root = self.source_root(source_root_id.source_root_id(self));
+        let source_root = self.file_source_root(file_id);
         self.source_root_crates(source_root.source_root_id(self))
     }
 }
