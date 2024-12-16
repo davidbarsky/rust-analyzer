@@ -31,7 +31,7 @@ use triomphe::Arc;
 use core::fmt;
 use std::hash::Hash;
 
-use base_db::{CrateId, InternValueTrivial};
+use base_db::CrateId;
 use either::Either;
 use span::{
     Edition, EditionedFileId, ErasedFileAstId, FileAstId, HirFileIdRepr, Span, SpanAnchor,
@@ -253,7 +253,6 @@ pub struct MacroCallLoc {
     pub kind: MacroCallKind,
     pub ctxt: SyntaxContextId,
 }
-impl InternValueTrivial for MacroCallLoc {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MacroDefId {
