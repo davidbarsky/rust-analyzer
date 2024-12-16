@@ -40,7 +40,6 @@ impl Default for TestDB {
             source_roots: Default::default(),
             file_source_roots: Default::default(),
         };
-        hir_expand::db::setup_syntax_context_root(this.upcast());
         this.set_expand_proc_attr_macros_with_durability(true, Durability::HIGH);
         this
     }

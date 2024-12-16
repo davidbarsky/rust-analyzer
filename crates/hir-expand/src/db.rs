@@ -6,9 +6,7 @@ use limit::Limit;
 use mbe::MatchedArmIndex;
 use rustc_hash::FxHashSet;
 use salsa::plumbing::AsId;
-use span::{
-    AstIdMap, EditionedFileId, HirFileId, HirFileIdRepr, MacroFileId, Span, SyntaxContextData,
-};
+use span::{AstIdMap, EditionedFileId, HirFileId, HirFileIdRepr, MacroFileId, Span, SyntaxContext};
 use syntax::{ast, AstNode, Parse, SyntaxElement, SyntaxError, SyntaxNode, SyntaxToken, T};
 use syntax_bridge::{syntax_node_to_token_tree, DocCommentDesugarMode};
 use triomphe::Arc;
@@ -92,9 +90,6 @@ pub trait ExpandDatabase: RootQueryDb {
     #[db_ext_macro::interned(MacroCallWrapper)]
     fn intern_macro_call(&self, macro_call: MacroCallLoc) -> MacroCallId;
 
-    #[db_ext_macro::interned(SyntaxContextWrapper)]
-    fn intern_syntax_context(&self, ctx: SyntaxContextData) -> SyntaxContextId;
-
     #[db_ext_macro::transparent]
     #[db_ext_macro::invoke(crate::hygiene::dump_syntax_contexts)]
     fn dump_syntax_contexts(&self) -> String;
@@ -154,10 +149,9 @@ pub struct MacroCallWrapper {
 
 #[salsa::interned_sans_lifetime(id = span::SyntaxContextId)]
 pub struct SyntaxContextWrapper {
-    pub data: SyntaxContextData,
+    pub data: SyntaxContext,
 }
 
-// adding a comment
 fn syntax_context(db: &dyn ExpandDatabase, file: HirFileId) -> SyntaxContextId {
     match file.repr() {
         HirFileIdRepr::FileId(_) => SyntaxContextId::ROOT,
@@ -772,8 +766,4 @@ fn check_tt_count(tt: &tt::Subtree) -> Result<(), ExpandResult<()>> {
     } else {
         Ok(())
     }
-}
-
-pub fn setup_syntax_context_root(db: &dyn ExpandDatabase) {
-    db.intern_syntax_context(SyntaxContextData::root());
 }

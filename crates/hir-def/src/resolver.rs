@@ -309,10 +309,10 @@ impl Resolver {
 
         if n_segments <= 1 {
             let mut hygiene_info = if !hygiene_id.is_root() {
-                let ctx = db.lookup_intern_syntax_context(hygiene_id.0);
-                ctx.outer_expn.map(|expansion| {
+                let ctx = hygiene_id.0;
+                ctx.outer_expn(db).map(|expansion| {
                     let expansion = db.lookup_intern_macro_call(expansion);
-                    (ctx.parent, expansion.def)
+                    (ctx.parent(db), expansion.def)
                 })
             } else {
                 None
@@ -338,11 +338,11 @@ impl Resolver {
                                 // A macro is allowed to refer to variables from before its declaration.
                                 // Therefore, if we got to the rib of its declaration, give up its hygiene
                                 // and use its parent expansion.
-                                let parent_ctx = db.lookup_intern_syntax_context(parent_ctx);
-                                hygiene_id = HygieneId::new(parent_ctx.opaque_and_semitransparent);
-                                hygiene_info = parent_ctx.outer_expn.map(|expansion| {
+                                hygiene_id =
+                                    HygieneId::new(parent_ctx.opaque_and_semitransparent(db));
+                                hygiene_info = parent_ctx.outer_expn(db).map(|expansion| {
                                     let expansion = db.lookup_intern_macro_call(expansion);
-                                    (parent_ctx.parent, expansion.def)
+                                    (parent_ctx.parent(db), expansion.def)
                                 });
                             }
                         }
