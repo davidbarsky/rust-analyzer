@@ -1,4 +1,5 @@
 use either::Either;
+use hir::db::ExpandDatabase as _;
 use hir::{HasSource, HirDisplay, HirFileIdExt, Semantics, VariantId};
 use ide_db::text_edit::TextEdit;
 use ide_db::{source_change::SourceChange, EditionedFileId, RootDatabase};
@@ -38,7 +39,7 @@ pub(crate) fn no_such_field(ctx: &DiagnosticsContext<'_>, d: &hir::NoSuchField) 
 
 fn fixes(ctx: &DiagnosticsContext<'_>, d: &hir::NoSuchField) -> Option<Vec<Assist>> {
     // FIXME: quickfix for pattern
-    let root = hir::parse_or_expand(ctx.sema.db, d.field.file_id);
+    let root = ctx.sema.db.parse_or_expand(d.field.file_id);
     match &d.field.value.to_node(&root) {
         Either::Left(node) => missing_record_expr_field_fixes(
             &ctx.sema,

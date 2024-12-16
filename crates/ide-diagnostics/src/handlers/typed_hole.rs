@@ -1,4 +1,5 @@
 use hir::{
+    db::ExpandDatabase as _,
     term_search::{term_search, TermSearchConfig, TermSearchCtx},
     ClosureStyle, HirDisplay, ImportPathConfig,
 };
@@ -39,7 +40,7 @@ pub(crate) fn typed_hole(ctx: &DiagnosticsContext<'_>, d: &hir::TypedHole) -> Di
 
 fn fixes(ctx: &DiagnosticsContext<'_>, d: &hir::TypedHole) -> Option<Vec<Assist>> {
     let db = ctx.sema.db;
-    let root = hir::parse_or_expand(db, d.expr.file_id);
+    let root = db.parse_or_expand(d.expr.file_id);
     let (original_range, _) =
         d.expr.as_ref().map(|it| it.to_node(&root)).syntax().original_file_range_opt(db)?;
     let scope = ctx.sema.scope(d.expr.value.to_node(&root).syntax())?;

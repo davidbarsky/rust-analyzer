@@ -133,7 +133,7 @@ pub use {
     hir_expand::{
         attrs::{Attr, AttrId},
         change::ChangeWithProcMacros,
-        db::{parse_or_expand, setup_syntax_context_root},
+        db::setup_syntax_context_root,
         files::{
             FilePosition, FilePositionWrapper, FileRange, FileRangeWrapper, HirFilePosition,
             HirFileRange, InFile, InFileWrapper, InMacroFile, InRealFile, MacroFilePosition,
@@ -1052,21 +1052,21 @@ fn emit_def_diagnostic_(
                     AttrOwner::Field(FieldParent::Variant(parent), idx) => process_field_list(
                         ast_id_map
                             .get(item_tree[parent].ast_id)
-                            .to_node(&hir_expand::db::parse_or_expand(db.upcast(), tree.file_id()))
+                            .to_node(&db.parse_or_expand(tree.file_id()))
                             .field_list(),
                         idx,
                     )?,
                     AttrOwner::Field(FieldParent::Struct(parent), idx) => process_field_list(
                         ast_id_map
                             .get(item_tree[parent.index()].ast_id)
-                            .to_node(&hir_expand::db::parse_or_expand(db.upcast(), tree.file_id()))
+                            .to_node(&db.parse_or_expand(tree.file_id()))
                             .field_list(),
                         idx,
                     )?,
                     AttrOwner::Field(FieldParent::Union(parent), idx) => SyntaxNodePtr::new(
                         ast_id_map
                             .get(item_tree[parent.index()].ast_id)
-                            .to_node(&hir_expand::db::parse_or_expand(db.upcast(), tree.file_id()))
+                            .to_node(&db.parse_or_expand(tree.file_id()))
                             .record_field_list()?
                             .fields()
                             .nth(idx.into_raw().into_u32() as usize)?
@@ -1075,7 +1075,7 @@ fn emit_def_diagnostic_(
                     AttrOwner::Param(parent, idx) => SyntaxNodePtr::new(
                         ast_id_map
                             .get(item_tree[parent.index()].ast_id)
-                            .to_node(&hir_expand::db::parse_or_expand(db.upcast(), tree.file_id()))
+                            .to_node(&db.parse_or_expand(tree.file_id()))
                             .param_list()?
                             .params()
                             .nth(idx.into_raw().into_u32() as usize)?
@@ -1084,7 +1084,7 @@ fn emit_def_diagnostic_(
                     AttrOwner::TypeOrConstParamData(parent, idx) => SyntaxNodePtr::new(
                         ast_id_map
                             .get(parent.ast_id(&item_tree))
-                            .to_node(&hir_expand::db::parse_or_expand(db.upcast(), tree.file_id()))
+                            .to_node(&db.parse_or_expand(tree.file_id()))
                             .generic_param_list()?
                             .type_or_const_params()
                             .nth(idx.into_raw().into_u32() as usize)?
@@ -1093,7 +1093,7 @@ fn emit_def_diagnostic_(
                     AttrOwner::LifetimeParamData(parent, idx) => SyntaxNodePtr::new(
                         ast_id_map
                             .get(parent.ast_id(&item_tree))
-                            .to_node(&hir_expand::db::parse_or_expand(db.upcast(), tree.file_id()))
+                            .to_node(&db.parse_or_expand(tree.file_id()))
                             .generic_param_list()?
                             .lifetime_params()
                             .nth(idx.into_raw().into_u32() as usize)?

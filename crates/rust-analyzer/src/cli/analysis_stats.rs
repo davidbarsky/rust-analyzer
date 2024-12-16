@@ -8,9 +8,9 @@ use std::{
 
 use cfg::{CfgAtom, CfgDiff};
 use hir::{
-    db::{DefDatabase, HirDatabase},
-    parse_or_expand, Adt, AssocItem, Crate, DefWithBody, HasSource, HirDisplay, HirFileIdExt,
-    ImportPathConfig, ModuleDef, Name,
+    db::{DefDatabase, ExpandDatabase, HirDatabase},
+    Adt, AssocItem, Crate, DefWithBody, HasSource, HirDisplay, HirFileIdExt, ImportPathConfig,
+    ModuleDef, Name,
 };
 use hir_def::{
     body::BodySourceMap,
@@ -1109,7 +1109,7 @@ fn location_csv_expr(db: &RootDatabase, vfs: &Vfs, sm: &BodySourceMap, expr_id: 
         Ok(s) => s,
         Err(SyntheticSyntax) => return "synthetic,,".to_owned(),
     };
-    let root = parse_or_expand(db, src.file_id);
+    let root = db.parse_or_expand(src.file_id);
     let node = src.map(|e| e.to_node(&root).syntax().clone());
     let original_range = node.as_ref().original_file_range_rooted(db);
     let path = vfs.file_path(original_range.file_id.into());
@@ -1125,7 +1125,7 @@ fn location_csv_pat(db: &RootDatabase, vfs: &Vfs, sm: &BodySourceMap, pat_id: Pa
         Ok(s) => s,
         Err(SyntheticSyntax) => return "synthetic,,".to_owned(),
     };
-    let root = parse_or_expand(db, src.file_id);
+    let root = db.parse_or_expand(src.file_id);
     let node = src.map(|e| e.to_node(&root).syntax().clone());
     let original_range = node.as_ref().original_file_range_rooted(db);
     let path = vfs.file_path(original_range.file_id.into());
@@ -1144,7 +1144,7 @@ fn expr_syntax_range<'a>(
 ) -> Option<(&'a VfsPath, LineCol, LineCol)> {
     let src = sm.expr_syntax(expr_id);
     if let Ok(src) = src {
-        let root = parse_or_expand(db, src.file_id);
+        let root = db.parse_or_expand(src.file_id);
         let node = src.map(|e| e.to_node(&root).syntax().clone());
         let original_range = node.as_ref().original_file_range_rooted(db);
         let path = vfs.file_path(original_range.file_id.into());
@@ -1165,7 +1165,7 @@ fn pat_syntax_range<'a>(
 ) -> Option<(&'a VfsPath, LineCol, LineCol)> {
     let src = sm.pat_syntax(pat_id);
     if let Ok(src) = src {
-        let root = parse_or_expand(db, src.file_id);
+        let root = db.parse_or_expand(src.file_id);
         let node = src.map(|e| e.to_node(&root).syntax().clone());
         let original_range = node.as_ref().original_file_range_rooted(db);
         let path = vfs.file_path(original_range.file_id.into());

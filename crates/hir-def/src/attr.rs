@@ -456,7 +456,7 @@ impl AttrsWithOwner {
             AttrDefId::FieldId(id) => {
                 let map = db.fields_attrs_source_map(id.parent);
                 let file_id = id.parent.file_id(db);
-                let root = hir_expand::db::parse_or_expand(db.upcast(), file_id);
+                let root = db.parse_or_expand(file_id);
                 let owner = ast::AnyHasAttrs::new(map[id.local_id].to_node(&root));
                 InFile::new(file_id, owner)
             }

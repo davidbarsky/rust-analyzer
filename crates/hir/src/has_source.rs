@@ -6,7 +6,7 @@ use hir_def::{
     src::{HasChildSource, HasSource as _},
     CallableDefId, Lookup, MacroId, VariantId,
 };
-use hir_expand::{db::parse_or_expand, HirFileId, InFile};
+use hir_expand::{HirFileId, InFile};
 use hir_ty::db::InternedClosure;
 use span::EditionedFileId;
 use syntax::ast;
@@ -246,7 +246,7 @@ impl HasSource for Param {
                 let InternedClosure(owner, expr_id) = db.lookup_intern_closure(closure.into());
                 let source_map = db.body_with_source_map(owner).source_map;
                 let ast @ InFile { file_id, value } = source_map.expr_syntax(expr_id).ok()?;
-                let root = parse_or_expand(db.upcast(), file_id);
+                let root = db.parse_or_expand(file_id);
                 match value.to_node(&root) {
                     ast::Expr::ClosureExpr(it) => it
                         .param_list()?

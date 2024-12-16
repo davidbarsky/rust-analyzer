@@ -1,6 +1,7 @@
 use either::Either;
 use hir::{
-    db::HirDatabase, sym, AssocItem, HirDisplay, HirFileIdExt, ImportPathConfig, InFile, Type,
+    db::{ExpandDatabase as _, HirDatabase},
+    sym, AssocItem, HirDisplay, HirFileIdExt, ImportPathConfig, InFile, Type,
 };
 use ide_db::{
     assists::Assist, famous_defs::FamousDefs, imports::import_assets::item_for_path_search,
@@ -53,7 +54,7 @@ fn fixes(ctx: &DiagnosticsContext<'_>, d: &hir::MissingFields) -> Option<Vec<Ass
         return None;
     }
 
-    let root = hir::parse_or_expand(ctx.sema.db, d.file);
+    let root = ctx.sema.db.parse_or_expand(d.file);
 
     let current_module =
         ctx.sema.scope(d.field_list_parent.to_node(&root).syntax()).map(|it| it.module());
