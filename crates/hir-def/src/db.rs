@@ -55,7 +55,7 @@ impl_wrapper!(Macro2Id, Macro2Loc, Macro2Wrapper);
 impl_wrapper!(ProcMacroId, ProcMacroLoc, ProcMacroWrapper);
 impl_wrapper!(MacroRulesId, MacroRulesLoc, MacroRulesWrapper);
 impl_wrapper!(BlockId, BlockLoc, BlockWrapper);
-impl_wrapper!(ConstBlockId, ConstBlockLoc, AnonymusConstWrapper);
+impl_wrapper!(ConstBlockId, ConstBlockLoc, AnonymousConstWrapper);
 impl_wrapper!(InTypeConstId, InTypeConstLoc, InTypeConstWrapper);
 
 #[db_ext_macro::query_group(InternDatabaseStorage)]
@@ -116,7 +116,7 @@ pub trait InternDatabase: RootQueryDb {
     #[db_ext_macro::interned(BlockWrapper)]
     fn intern_block(&self, loc: BlockLoc) -> BlockId;
 
-    #[db_ext_macro::interned(AnonymusConstWrapper)]
+    #[db_ext_macro::interned(AnonymousConstWrapper)]
     fn intern_anonymous_const(&self, id: ConstBlockLoc) -> ConstBlockId;
 
     #[db_ext_macro::interned(InTypeConstWrapper)]

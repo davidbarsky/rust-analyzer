@@ -1,3 +1,4 @@
+use hir::db::ExpandDatabase as _;
 use hir::{diagnostics::RemoveTrailingReturn, FileRange};
 use ide_db::text_edit::TextEdit;
 use ide_db::{assists::Assist, source_change::SourceChange};
@@ -36,7 +37,7 @@ pub(crate) fn remove_trailing_return(
 }
 
 fn fixes(ctx: &DiagnosticsContext<'_>, d: &RemoveTrailingReturn) -> Option<Vec<Assist>> {
-    let root = hir::parse_or_expand(ctx.sema.db, d.return_expr.file_id);
+    let root = ctx.sema.db.parse_or_expand(d.return_expr.file_id);
 
     let return_expr = d.return_expr.value.to_node(&root);
     let stmt = return_expr.syntax().parent().and_then(ast::ExprStmt::cast);

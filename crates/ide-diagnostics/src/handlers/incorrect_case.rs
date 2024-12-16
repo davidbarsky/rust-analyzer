@@ -1,4 +1,4 @@
-use hir::{CaseType, InFile};
+use hir::{db::ExpandDatabase as _, CaseType, InFile};
 use ide_db::{assists::Assist, defs::NameClass};
 use syntax::AstNode;
 
@@ -33,7 +33,7 @@ pub(crate) fn incorrect_case(ctx: &DiagnosticsContext<'_>, d: &hir::IncorrectCas
 }
 
 fn fixes(ctx: &DiagnosticsContext<'_>, d: &hir::IncorrectCase) -> Option<Vec<Assist>> {
-    let root = hir::parse_or_expand(ctx.sema.db, d.file);
+    let root = ctx.sema.db.parse_or_expand(d.file);
 
     let name_node = d.ident.to_node(&root);
     let def = NameClass::classify(&ctx.sema, &name_node)?.defined()?;

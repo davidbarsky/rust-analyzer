@@ -823,7 +823,7 @@ impl InTypeConstId {
     pub fn source(&self, db: &dyn DefDatabase) -> ast::ConstArg {
         let src = self.lookup(db).id;
         let file_id = src.file_id;
-        let root = hir_expand::db::parse_or_expand(db.upcast(), file_id);
+        let root = db.parse_or_expand(file_id);
         db.ast_id_map(file_id).get(src.value).to_node(&root)
     }
 }

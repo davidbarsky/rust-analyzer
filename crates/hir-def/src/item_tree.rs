@@ -118,7 +118,7 @@ impl ItemTree {
         static EMPTY: OnceLock<ItemTreeAndSourceMap> = OnceLock::new();
 
         let ctx = lower::Ctx::new(db, file_id);
-        let syntax = hir_expand::db::parse_or_expand(db.upcast(), file_id);
+        let syntax = db.parse_or_expand(file_id);
         let mut top_attrs = None;
         let (mut item_tree, source_maps) = match_ast! {
             match syntax {

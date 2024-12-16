@@ -64,6 +64,9 @@ pub trait ExpandDatabase: RootQueryDb {
 
     fn ast_id_map(&self, file_id: HirFileId) -> Arc<AstIdMap>;
 
+    #[db_ext_macro::transparent]
+    fn parse_or_expand(&self, file_id: HirFileId) -> SyntaxNode;
+
     /// Implementation for the macro case.
     #[db_ext_macro::lru]
     fn parse_macro_expansion(
@@ -333,12 +336,12 @@ pub fn expand_speculative(
 }
 
 fn ast_id_map(db: &dyn ExpandDatabase, file_id: span::HirFileId) -> triomphe::Arc<AstIdMap> {
-    triomphe::Arc::new(AstIdMap::from_source(&parse_or_expand(db, file_id)))
+    triomphe::Arc::new(AstIdMap::from_source(&db.parse_or_expand(file_id)))
 }
 
 /// Main public API -- parses a hir file, not caring whether it's a real
 /// file or a macro expansion.
-pub fn parse_or_expand(db: &dyn ExpandDatabase, file_id: HirFileId) -> SyntaxNode {
+fn parse_or_expand(db: &dyn ExpandDatabase, file_id: HirFileId) -> SyntaxNode {
     match file_id.repr() {
         HirFileIdRepr::FileId(file_id) => db.parse(file_id).syntax_node(),
         HirFileIdRepr::MacroFile(macro_file) => {
@@ -684,7 +687,7 @@ fn macro_expand(
 }
 
 fn proc_macro_span(db: &dyn ExpandDatabase, ast: AstId<ast::Fn>) -> Span {
-    let root = parse_or_expand(db, ast.file_id);
+    let root = db.parse_or_expand(ast.file_id);
     let ast_id_map = &db.ast_id_map(ast.file_id);
     let span_map = &db.span_map(ast.file_id);
 
