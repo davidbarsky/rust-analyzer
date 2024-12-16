@@ -31,11 +31,11 @@ use triomphe::Arc;
 use core::fmt;
 use std::hash::Hash;
 
-use base_db::{CrateId, InternValueTrivial};
+use base_db::CrateId;
 use either::Either;
 use span::{
     Edition, EditionedFileId, ErasedFileAstId, FileAstId, HirFileIdRepr, Span, SpanAnchor,
-    SyntaxContextData, SyntaxContextId,
+    SyntaxContextId,
 };
 use syntax::{
     ast::{self, AstNode},
@@ -118,14 +118,6 @@ impl_intern_lookup!(
     MacroCallLoc,
     intern_macro_call,
     lookup_intern_macro_call
-);
-
-impl_intern_lookup!(
-    ExpandDatabase,
-    SyntaxContextId,
-    SyntaxContextData,
-    intern_syntax_context,
-    lookup_intern_syntax_context
 );
 
 pub type ExpandResult<T> = ValueResult<T, ExpandError>;
@@ -253,7 +245,6 @@ pub struct MacroCallLoc {
     pub kind: MacroCallKind,
     pub ctxt: SyntaxContextId,
 }
-impl InternValueTrivial for MacroCallLoc {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MacroDefId {
