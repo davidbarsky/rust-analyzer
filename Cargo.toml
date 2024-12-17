@@ -137,7 +137,7 @@ pulldown-cmark-to-cmark = "10.0.4"
 pulldown-cmark = { version = "0.9.0", default-features = false }
 rayon = "1.8.0"
 salsa = { git = "https://github.com/davidbarsky/salsa.git", rev = "13da3d5c7555e301f683c0ab04eb7152457c952f" }
-db-ext-macro = { git = "https://github.com/davidbarsky/db-ext-macro.git", rev = "d9d1c7e2e2bed618483d198a903f97b487426f4b" }
+db-ext-macro = { git = "https://github.com/davidbarsky/db-ext-macro.git", rev = "533ad3df8e3c6c6e77aa9cfaa88a927d76de870c" }
 rustc-hash = "2.0.0"
 semver = "1.0.14"
 serde = { version = "1.0.192", features = ["derive"] }

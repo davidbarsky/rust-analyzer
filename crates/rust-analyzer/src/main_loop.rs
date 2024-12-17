@@ -59,6 +59,8 @@ pub fn main_loop(config: Config, connection: Connection) -> anyhow::Result<()> {
         SetThreadPriority(thread, thread_priority_above_normal);
     }
 
+    dbg!("hello from new salsa!");
+
     GlobalState::new(connection.sender, config).run(connection.receiver)
 }
 

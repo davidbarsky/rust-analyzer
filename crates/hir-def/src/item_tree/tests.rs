@@ -270,7 +270,7 @@ m!();
             // AstId: 2
             pub macro m2 { ... }
 
-            // AstId: 3, SyntaxContext: 0, ExpandTo: Items
+            // AstId: 3, SyntaxContext: 4294967040, ExpandTo: Items
             m!(...);
         "#]],
     );
