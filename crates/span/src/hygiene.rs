@@ -187,20 +187,6 @@ const _: () = {
 
     unsafe impl Sync for SyntaxContext {}
 
-    impl std::fmt::Debug for SyntaxContext {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            if self.is_root() {
-                let mut f = f.debug_struct("SyntaxContextData");
-                let f = f.field("outer_expn", &None::<MacroCallId>);
-                let f = f.field("outer_transparency", &Transparency::Opaque);
-                let f = f.field("parent", &self);
-                let f = f.field("opaque", &self);
-                let f = f.field("opaque_and_semitransparent", &self);
-                return f.finish();
-            }
-            Self::default_debug_fmt(*self, f)
-        }
-    }
     impl zalsa_::SalsaStructInDb for SyntaxContext {}
 
     unsafe impl zalsa_::Update for SyntaxContext {
@@ -377,5 +363,15 @@ impl Transparency {
 impl fmt::Display for SyntaxContext {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0.as_u32())
+    }
+}
+
+impl std::fmt::Debug for SyntaxContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if f.alternate() {
+            write!(f, "{}", self.0.as_u32())
+        } else {
+            f.debug_tuple("SyntaxContext").field(&self.0).finish()
+        }
     }
 }
