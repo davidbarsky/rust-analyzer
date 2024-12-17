@@ -132,7 +132,12 @@ mod tests {
                                 0,
                             ): (
                                 TextEdit {
-                                    indels: [],
+                                    indels: [
+                                        Indel {
+                                            insert: "3",
+                                            delete: 33..34,
+                                        },
+                                    ],
                                 },
                                 None,
                             ),
@@ -162,7 +167,34 @@ mod tests {
                 target: 10..21,
                 source_change: Some(
                     SourceChange {
-                        source_file_edits: {},
+                        source_file_edits: {
+                            FileId(
+                                0,
+                            ): (
+                                TextEdit {
+                                    indels: [
+                                        Indel {
+                                            insert: "3",
+                                            delete: 33..34,
+                                        },
+                                    ],
+                                },
+                                None,
+                            ),
+                            FileId(
+                                1,
+                            ): (
+                                TextEdit {
+                                    indels: [
+                                        Indel {
+                                            insert: "3",
+                                            delete: 11..12,
+                                        },
+                                    ],
+                                },
+                                None,
+                            ),
+                        },
                         file_system_edits: [],
                         is_snippet: false,
                     },
