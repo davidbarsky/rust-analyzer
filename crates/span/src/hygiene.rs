@@ -104,7 +104,7 @@ const _: () = {
     use salsa::plumbing as zalsa_;
     use zalsa_::interned as zalsa_struct_;
     type Configuration_ = SyntaxContext;
-    #[derive(Clone, Hash, Eq, PartialEq)]
+    #[derive(Clone, Eq)]
     pub struct StructData(
         Option<MacroCallId>,
         Transparency,
@@ -112,6 +112,20 @@ const _: () = {
         SyntaxContext,
         SyntaxContext,
     );
+
+    impl PartialEq for StructData {
+        fn eq(&self, other: &Self) -> bool {
+            self.0 == other.0 && self.1 == other.1 && self.2 == other.2
+        }
+    }
+
+    impl std::hash::Hash for StructData {
+        fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+            self.0.hash(state);
+            self.1.hash(state);
+            self.2.hash(state);
+        }
+    }
     #[doc = r" Key to use during hash lookups. Each field is some type that implements `Lookup<T>`"]
     #[doc = r" for the owned type. This permits interning with an `&str` when a `String` is required and so forth."]
     #[derive(Hash)]
@@ -201,7 +215,7 @@ const _: () = {
     }
     impl<'db> SyntaxContext {
         pub fn new<
-            Db_: ?Sized,
+            Db_,
             T0: zalsa_::interned::Lookup<Option<MacroCallId>> + std::hash::Hash,
             T1: zalsa_::interned::Lookup<Transparency> + std::hash::Hash,
             T2: zalsa_::interned::Lookup<SyntaxContext> + std::hash::Hash,
@@ -317,8 +331,8 @@ const _: () = {
 };
 
 impl SyntaxContext {
-    pub const fn is_root(self) -> bool {
-        false
+    pub fn is_root(self) -> bool {
+        self == Self::ROOT
     }
     /// The root context, which is the parent of all other contexts. All [`FileId`]s have this context.
     pub const ROOT: Self =
