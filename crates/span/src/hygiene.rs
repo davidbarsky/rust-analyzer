@@ -187,7 +187,13 @@ const _: () = {
 
     unsafe impl Sync for SyntaxContext {}
 
-    impl zalsa_::SalsaStructInDb for SyntaxContext {}
+    impl zalsa_::SalsaStructInDb for SyntaxContext {
+        fn lookup_ingredient_index(
+            aux: &dyn salsa::plumbing::JarAux,
+        ) -> Option<salsa::IngredientIndex> {
+            aux.lookup_jar_by_type(&zalsa_struct_::JarImpl::<Configuration_>::default())
+        }
+    }
 
     unsafe impl zalsa_::Update for SyntaxContext {
         unsafe fn maybe_update(old_pointer: *mut Self, new_value: Self) -> bool {
