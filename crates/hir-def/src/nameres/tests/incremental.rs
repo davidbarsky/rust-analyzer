@@ -284,7 +284,6 @@ m!(Z);
             let (_, module_data) = crate_def_map.modules.iter().last().unwrap();
             assert_eq!(module_data.scope.resolutions().count(), 4);
         });
-        dbg!(&events);
         let n_recalculated_item_trees =
             events.iter().filter(|it| it.contains("file_item_tree_shim")).count();
         assert_eq!(n_recalculated_item_trees, 0);
