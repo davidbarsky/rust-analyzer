@@ -147,11 +147,6 @@ pub struct MacroCallWrapper {
     pub loc: MacroCallLoc,
 }
 
-#[salsa::interned_sans_lifetime(id = span::SyntaxContextId)]
-pub struct SyntaxContextWrapper {
-    pub data: SyntaxContext,
-}
-
 fn syntax_context(db: &dyn ExpandDatabase, file: HirFileId) -> SyntaxContextId {
     match file.repr() {
         HirFileIdRepr::FileId(_) => SyntaxContextId::ROOT,

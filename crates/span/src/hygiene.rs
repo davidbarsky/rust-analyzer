@@ -322,7 +322,7 @@ impl SyntaxContext {
     }
     /// The root context, which is the parent of all other contexts. All [`FileId`]s have this context.
     pub const ROOT: Self =
-        SyntaxContext(salsa::Id::from_u32(salsa::Id::MAX_U32), std::marker::PhantomData);
+        SyntaxContext(salsa::Id::from_u32(salsa::Id::MAX_U32 - 1), std::marker::PhantomData);
 
     pub fn into_u32(self) -> u32 {
         self.0.as_u32()
