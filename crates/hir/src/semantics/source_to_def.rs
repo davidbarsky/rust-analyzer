@@ -333,7 +333,7 @@ impl SourceToDefCtx<'_, '_> {
             })
             .position(|it| it == *src.value)?;
         let container = self.find_pat_or_label_container(src.syntax_ref())?;
-        let source_map = self.db.body_with_source_map(container).source_map;
+        let source_map = self.db.body_with_source_map(container).1;
         let expr = source_map.node_expr(src.with_value(&ast::Expr::AsmExpr(asm)))?.as_expr()?;
         Some(InlineAsmOperand { owner: container, expr, index })
     }
@@ -343,8 +343,7 @@ impl SourceToDefCtx<'_, '_> {
         src: InFile<&ast::IdentPat>,
     ) -> Option<(DefWithBodyId, BindingId)> {
         let container = self.find_pat_or_label_container(src.syntax_ref())?;
-        let res = self.db.body_with_source_map(container);
-        let (body, source_map) = (res.body, res.source_map);
+        let (body, source_map) = self.db.body_with_source_map(container);
         let src = src.cloned().map(ast::Pat::from);
         let pat_id = source_map.node_pat(src.as_ref())?;
         // the pattern could resolve to a constant, verify that this is not the case
@@ -367,7 +366,7 @@ impl SourceToDefCtx<'_, '_> {
         src: InFile<&ast::Label>,
     ) -> Option<(DefWithBodyId, LabelId)> {
         let container = self.find_pat_or_label_container(src.syntax_ref())?;
-        let source_map = self.db.body_with_source_map(container).source_map;
+        let source_map = self.db.body_with_source_map(container).1;
 
         let label_id = source_map.node_label(src)?;
         Some((container, label_id))
@@ -379,8 +378,7 @@ impl SourceToDefCtx<'_, '_> {
     ) -> Option<(DefWithBodyId, LabelId)> {
         let break_or_continue = ast::Expr::cast(src.value.syntax().parent()?)?;
         let container = self.find_pat_or_label_container(src.syntax_ref())?;
-        let res = self.db.body_with_source_map(container);
-        let (body, source_map) = (res.body, res.source_map);
+        let (body, source_map) = self.db.body_with_source_map(container);
         let break_or_continue =
             source_map.node_expr(src.with_value(&break_or_continue))?.as_expr()?;
         let (Expr::Break { label, .. } | Expr::Continue { label }) = body[break_or_continue] else {

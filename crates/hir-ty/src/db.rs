@@ -19,11 +19,7 @@ use crate::{
     consteval::ConstEvalError,
     dyn_compatibility::DynCompatibilityViolation,
     layout::{Layout, LayoutError},
-    lower::{
-        BindersTyAndDiagnostics, Diagnostics, FieldTypesAndDiagnostics, GenericDefaults,
-        GenericDefaultsAndDiagnostics, GenericPredicates, GenericPredicatesAndDiagnostics,
-        TyAndDiagnostics,
-    },
+    lower::{Diagnostics, GenericDefaults, GenericPredicates},
     method_resolution::{ImplMethodAndSubst, InherentImpls, TraitImpls, TyFingerprint},
     mir::{BorrowckResult, MirBody, MirLowerError},
     Binders, ClosureId, Const, FnDefId, ImplTraitId, ImplTraits, InferenceResult, Interner,
@@ -117,7 +113,7 @@ pub trait HirDatabase: DefDatabase + Upcast<dyn DefDatabase> + std::fmt::Debug {
     fn ty(&self, def: TyDefId) -> Binders<Ty>;
 
     #[db_ext_macro::invoke(crate::lower::type_for_type_alias_with_diagnostics_query)]
-    fn type_for_type_alias_with_diagnostics(&self, def: TypeAliasId) -> BindersTyAndDiagnostics;
+    fn type_for_type_alias_with_diagnostics(&self, def: TypeAliasId) -> (Binders<Ty>, Diagnostics);
 
     /// Returns the type of the value of the given constant, or `None` if the `ValueTyDefId` is
     /// a `StructId` or `EnumVariantId` with a record constructor.
@@ -126,13 +122,13 @@ pub trait HirDatabase: DefDatabase + Upcast<dyn DefDatabase> + std::fmt::Debug {
 
     #[db_ext_macro::invoke(crate::lower::impl_self_ty_with_diagnostics_query)]
     #[db_ext_macro::cycle(crate::lower::impl_self_ty_with_diagnostics_recover)]
-    fn impl_self_ty_with_diagnostics(&self, def: ImplId) -> BindersTyAndDiagnostics;
+    fn impl_self_ty_with_diagnostics(&self, def: ImplId) -> (Binders<Ty>, Diagnostics);
 
     #[db_ext_macro::invoke(crate::lower::impl_self_ty_query)]
     fn impl_self_ty(&self, def: ImplId) -> Binders<Ty>;
 
     #[db_ext_macro::invoke(crate::lower::const_param_ty_with_diagnostics_query)]
-    fn const_param_ty_with_diagnostics(&self, def: ConstParamId) -> TyAndDiagnostics;
+    fn const_param_ty_with_diagnostics(&self, def: ConstParamId) -> (Ty, Diagnostics);
 
     #[db_ext_macro::invoke(crate::lower::const_param_ty_query)]
     fn const_param_ty(&self, def: ConstParamId) -> Ty;
@@ -144,7 +140,10 @@ pub trait HirDatabase: DefDatabase + Upcast<dyn DefDatabase> + std::fmt::Debug {
     fn impl_trait(&self, def: ImplId) -> Option<Binders<TraitRef>>;
 
     #[db_ext_macro::invoke(crate::lower::field_types_with_diagnostics_query)]
-    fn field_types_with_diagnostics(&self, var: VariantId) -> FieldTypesAndDiagnostics;
+    fn field_types_with_diagnostics(
+        &self,
+        var: VariantId,
+    ) -> (Arc<ArenaMap<LocalFieldId, Binders<Ty>>>, Diagnostics);
 
     #[db_ext_macro::invoke(crate::lower::field_types_query)]
     fn field_types(&self, var: VariantId) -> Arc<ArenaMap<LocalFieldId, Binders<Ty>>>;
@@ -174,7 +173,7 @@ pub trait HirDatabase: DefDatabase + Upcast<dyn DefDatabase> + std::fmt::Debug {
     fn generic_predicates_without_parent_with_diagnostics(
         &self,
         def: GenericDefId,
-    ) -> GenericPredicatesAndDiagnostics;
+    ) -> (GenericPredicates, Diagnostics);
 
     #[db_ext_macro::invoke(crate::lower::generic_predicates_without_parent_query)]
     fn generic_predicates_without_parent(&self, def: GenericDefId) -> GenericPredicates;
@@ -188,8 +187,10 @@ pub trait HirDatabase: DefDatabase + Upcast<dyn DefDatabase> + std::fmt::Debug {
 
     #[db_ext_macro::invoke(crate::lower::generic_defaults_with_diagnostics_query)]
     #[db_ext_macro::cycle(crate::lower::generic_defaults_with_diagnostics_recover)]
-    fn generic_defaults_with_diagnostics(&self, def: GenericDefId)
-        -> GenericDefaultsAndDiagnostics;
+    fn generic_defaults_with_diagnostics(
+        &self,
+        def: GenericDefId,
+    ) -> (GenericDefaults, Diagnostics);
 
     #[db_ext_macro::invoke(crate::lower::generic_defaults_query)]
     fn generic_defaults(&self, def: GenericDefId) -> GenericDefaults;

@@ -170,17 +170,11 @@ pub enum BodyDiagnostic {
     UndeclaredLabel { node: InFile<AstPtr<ast::Lifetime>>, name: Name },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BodyAndSourceMap {
-    pub body: Arc<Body>,
-    pub source_map: Arc<BodySourceMap>,
-}
-
 impl Body {
     pub(crate) fn body_with_source_map_query(
         db: &dyn DefDatabase,
         def: DefWithBodyId,
-    ) -> BodyAndSourceMap {
+    ) -> (Arc<Body>, Arc<BodySourceMap>) {
         let _p = tracing::info_span!("body_with_source_map_query").entered();
         let mut params = None;
 
@@ -240,11 +234,11 @@ impl Body {
         body.shrink_to_fit();
         source_map.shrink_to_fit();
 
-        BodyAndSourceMap { body: Arc::new(body), source_map: Arc::new(source_map) }
+        (Arc::new(body), Arc::new(source_map))
     }
 
     pub(crate) fn body_query(db: &dyn DefDatabase, def: DefWithBodyId) -> Arc<Body> {
-        db.body_with_source_map(def).body
+        db.body_with_source_map(def).0
     }
 
     /// Returns an iterator over all block expressions in this body that define inner items.

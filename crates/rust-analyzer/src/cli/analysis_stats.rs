@@ -687,7 +687,7 @@ impl flags::AnalysisStats {
             let body = db.body(body_id.into());
             let inference_result = db.infer(body_id.into());
             // This query is LRU'd, so actually calling it will skew the timing results.
-            let sm = || db.body_with_source_map(body_id.into()).source_map;
+            let sm = || db.body_with_source_map(body_id.into()).1;
 
             // region:expressions
             let (previous_exprs, previous_unknown, previous_partially_unknown) =

@@ -294,7 +294,7 @@ impl TestDB {
 
         // Find the innermost block expression that has a `DefMap`.
         let def_with_body = fn_def?.into();
-        let source_map = db.body_with_source_map(def_with_body).source_map;
+        let source_map = db.body_with_source_map(def_with_body).1;
         let scopes = db.expr_scopes(def_with_body);
         let root = db.parse(position.file_id);
 

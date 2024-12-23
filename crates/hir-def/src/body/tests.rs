@@ -290,7 +290,7 @@ impl SsrError {
 "##,
     );
 
-    assert_eq!(db.body_with_source_map(def).source_map.diagnostics(), &[]);
+    assert_eq!(db.body_with_source_map(def).1.diagnostics(), &[]);
     expect![[r#"
         fn main() -> () {
             _ = $crate::error::SsrError::new(
@@ -343,7 +343,7 @@ fn f(a: i32, b: u32) -> String {
 "#,
     );
 
-    let source_map = db.body_with_source_map(def).source_map;
+    let source_map = db.body_with_source_map(def).1;
     assert_eq!(source_map.diagnostics(), &[]);
 
     for (_, def_map) in body.blocks(&db) {
@@ -390,7 +390,7 @@ fn foo() {
 "#,
     );
 
-    let source_map = db.body_with_source_map(def).source_map;
+    let source_map = db.body_with_source_map(def).1;
     assert_eq!(source_map.diagnostics(), &[]);
 
     for (_, def_map) in body.blocks(&db) {
