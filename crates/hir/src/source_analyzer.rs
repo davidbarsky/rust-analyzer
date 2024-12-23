@@ -88,8 +88,7 @@ impl SourceAnalyzer {
         offset: Option<TextSize>,
         infer: Option<Arc<InferenceResult>>,
     ) -> SourceAnalyzer {
-        let res = db.body_with_source_map(def);
-        let (body, source_map) = (res.body, res.source_map);
+        let (body, source_map) = db.body_with_source_map(def);
         let scopes = db.expr_scopes(def);
         let scope = match offset {
             None => scope_for(db, &scopes, &source_map, node),

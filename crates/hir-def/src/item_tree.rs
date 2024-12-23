@@ -98,24 +98,17 @@ pub struct ItemTree {
     data: Option<Box<ItemTreeData>>,
 }
 
-// can be block or file
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct ItemTreeAndSourceMap {
-    pub item_tree: Arc<ItemTree>,
-    pub source_map: Arc<ItemTreeSourceMaps>,
-}
-
 impl ItemTree {
     pub(crate) fn file_item_tree_query(db: &dyn DefDatabase, file_id: HirFileId) -> Arc<ItemTree> {
-        db.file_item_tree_with_source_map(file_id).item_tree
+        db.file_item_tree_with_source_map(file_id).0
     }
 
     pub(crate) fn file_item_tree_with_source_map_query(
         db: &dyn DefDatabase,
         file_id: HirFileId,
-    ) -> ItemTreeAndSourceMap {
+    ) -> (Arc<ItemTree>, Arc<ItemTreeSourceMaps>) {
         let _p = tracing::info_span!("file_item_tree_query", ?file_id).entered();
-        static EMPTY: OnceLock<ItemTreeAndSourceMap> = OnceLock::new();
+        static EMPTY: OnceLock<(Arc<ItemTree>, Arc<ItemTreeSourceMaps>)> = OnceLock::new();
 
         let ctx = lower::Ctx::new(db, file_id);
         let syntax = db.parse_or_expand(file_id);
@@ -149,34 +142,33 @@ impl ItemTree {
         if item_tree.data.is_none() && item_tree.top_level.is_empty() && item_tree.attrs.is_empty()
         {
             EMPTY
-                .get_or_init(|| ItemTreeAndSourceMap {
-                    item_tree: Arc::new(ItemTree {
-                        top_level: SmallVec::new_const(),
-                        attrs: FxHashMap::default(),
-                        data: None,
-                    }),
-                    source_map: Arc::default(),
+                .get_or_init(|| {
+                    (
+                        Arc::new(ItemTree {
+                            top_level: SmallVec::new_const(),
+                            attrs: FxHashMap::default(),
+                            data: None,
+                        }),
+                        Arc::default(),
+                    )
                 })
                 .clone()
         } else {
             item_tree.shrink_to_fit();
-            ItemTreeAndSourceMap {
-                item_tree: Arc::new(item_tree),
-                source_map: Arc::new(source_maps),
-            }
+            (Arc::new(item_tree), Arc::new(source_maps))
         }
     }
 
     pub(crate) fn block_item_tree_query(db: &dyn DefDatabase, block: BlockId) -> Arc<ItemTree> {
-        db.block_item_tree_with_source_map(block).item_tree
+        db.block_item_tree_with_source_map(block).0
     }
 
     pub(crate) fn block_item_tree_with_source_map_query(
         db: &dyn DefDatabase,
         block: BlockId,
-    ) -> ItemTreeAndSourceMap {
+    ) -> (Arc<ItemTree>, Arc<ItemTreeSourceMaps>) {
         let _p = tracing::info_span!("block_item_tree_query", ?block).entered();
-        static EMPTY: OnceLock<ItemTreeAndSourceMap> = OnceLock::new();
+        static EMPTY: OnceLock<(Arc<ItemTree>, Arc<ItemTreeSourceMaps>)> = OnceLock::new();
 
         let loc = block.lookup(db);
         let block = loc.ast_id.to_node(db.upcast());
@@ -186,21 +178,20 @@ impl ItemTree {
         if item_tree.data.is_none() && item_tree.top_level.is_empty() && item_tree.attrs.is_empty()
         {
             EMPTY
-                .get_or_init(|| ItemTreeAndSourceMap {
-                    item_tree: Arc::new(ItemTree {
-                        top_level: SmallVec::new_const(),
-                        attrs: FxHashMap::default(),
-                        data: None,
-                    }),
-                    source_map: Arc::default(),
+                .get_or_init(|| {
+                    (
+                        Arc::new(ItemTree {
+                            top_level: SmallVec::new_const(),
+                            attrs: FxHashMap::default(),
+                            data: None,
+                        }),
+                        Arc::default(),
+                    )
                 })
                 .clone()
         } else {
             item_tree.shrink_to_fit();
-            ItemTreeAndSourceMap {
-                item_tree: Arc::new(item_tree),
-                source_map: Arc::new(source_maps),
-            }
+            (Arc::new(item_tree), Arc::new(source_maps))
         }
     }
 
@@ -611,7 +602,10 @@ impl TreeId {
         }
     }
 
-    pub fn item_tree_with_source_map(&self, db: &dyn DefDatabase) -> ItemTreeAndSourceMap {
+    pub fn item_tree_with_source_map(
+        &self,
+        db: &dyn DefDatabase,
+    ) -> (Arc<ItemTree>, Arc<ItemTreeSourceMaps>) {
         match self.block {
             Some(block) => db.block_item_tree_with_source_map(block),
             None => db.file_item_tree_with_source_map(self.file),
@@ -650,7 +644,10 @@ impl<N> ItemTreeId<N> {
         self.tree.item_tree(db)
     }
 
-    pub fn item_tree_with_source_map(self, db: &dyn DefDatabase) -> ItemTreeAndSourceMap {
+    pub fn item_tree_with_source_map(
+        self,
+        db: &dyn DefDatabase,
+    ) -> (Arc<ItemTree>, Arc<ItemTreeSourceMaps>) {
         self.tree.item_tree_with_source_map(db)
     }
 

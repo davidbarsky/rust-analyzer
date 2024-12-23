@@ -28,7 +28,7 @@ fn check_closure_captures(ra_fixture: &str, expect: Expect) {
         let db = &db;
         captures_info.extend(infer.closure_info.iter().flat_map(|(closure_id, (captures, _))| {
             let closure = db.lookup_intern_closure(InternedClosureId::from_id(closure_id.0));
-            let source_map = db.body_with_source_map(closure.0).source_map;
+            let source_map = db.body_with_source_map(closure.0).1;
             let closure_text_range = source_map
                 .expr_syntax(closure.1)
                 .expect("failed to map closure to SyntaxNode")
@@ -44,8 +44,7 @@ fn check_closure_captures(ra_fixture: &str, expect: Expect) {
                 }
 
                 // FIXME: Deduplicate this with hir::Local::sources().
-                let res = db.body_with_source_map(closure.0);
-                let (body, source_map) = (res.body, res.source_map);
+                let (body, source_map) = db.body_with_source_map(closure.0);
                 let local_text_range = match body.self_param.zip(source_map.self_param_syntax()) {
                     Some((param, source)) if param == capture.local() => {
                         format!("{:?}", text_range(db, source))

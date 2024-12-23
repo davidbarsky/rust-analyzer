@@ -365,7 +365,7 @@ mod tests {
         let function = find_function(&db, file_id.file_id());
 
         let scopes = db.expr_scopes(function.into());
-        let source_map = db.body_with_source_map(function.into()).source_map;
+        let source_map = db.body_with_source_map(function.into()).1;
 
         let expr_id = source_map
             .node_expr(InFile { file_id: file_id.into(), value: &marker.into() })
@@ -522,7 +522,7 @@ fn foo() {
         let function = find_function(&db, file_id.file_id());
 
         let scopes = db.expr_scopes(function.into());
-        let source_map = db.body_with_source_map(function.into()).source_map;
+        let source_map = db.body_with_source_map(function.into()).1;
 
         let expr_scope = {
             let expr_ast = name_ref.syntax().ancestors().find_map(ast::Expr::cast).unwrap();
