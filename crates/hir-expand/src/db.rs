@@ -6,9 +6,7 @@ use limit::Limit;
 use mbe::MatchedArmIndex;
 use rustc_hash::FxHashSet;
 use salsa::plumbing::AsId;
-use span::{
-    AstIdMap, EditionedFileId, HirFileId, HirFileIdRepr, MacroFileId, Span, SyntaxContextData,
-};
+use span::{AstIdMap, EditionedFileId, HirFileId, HirFileIdRepr, MacroFileId, Span};
 use syntax::{AstNode, Parse, SyntaxElement, SyntaxError, SyntaxNode, SyntaxToken, T, ast};
 use syntax_bridge::{DocCommentDesugarMode, syntax_node_to_token_tree};
 use triomphe::Arc;
