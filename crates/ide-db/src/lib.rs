@@ -220,20 +220,6 @@ impl SourceDatabase for RootDatabase {
         let input = FileSourceRootInput::builder(source_root_id).durability(durability).new(self);
         self.file_source_roots.insert(id, input);
     }
-
-    fn resolve_path(&self, path: AnchoredPath<'_>) -> Option<FileId> {
-        // FIXME: this *somehow* should be platform agnostic...
-        let source_root = self.file_source_root(path.anchor);
-        let source_root = self.source_root(source_root.source_root_id(self));
-        source_root.source_root(self).resolve_path(path)
-    }
-
-    fn relevant_crates(&self, file_id: FileId) -> Arc<[CrateId]> {
-        let _p = tracing::info_span!("relevant_crates").entered();
-
-        let source_root = self.file_source_root(file_id);
-        self.source_root_crates(source_root.source_root_id(self))
-    }
 }
 
 impl Default for RootDatabase {
