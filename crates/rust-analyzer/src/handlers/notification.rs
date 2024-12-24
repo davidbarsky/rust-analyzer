@@ -3,6 +3,7 @@
 
 use std::ops::{Deref, Not as _};
 
+use ide_db::base_db::salsa::Cancelled;
 use itertools::Itertools;
 use lsp_types::{
     CancelParams, DidChangeConfigurationParams, DidChangeTextDocumentParams,
@@ -293,7 +294,7 @@ fn run_flycheck(state: &mut GlobalState, vfs_path: VfsPath) -> bool {
         let world = state.snapshot();
         let may_flycheck_workspace = state.config.flycheck_workspace(None);
         let mut updated = false;
-        let task = move || -> std::result::Result<(), ide::Cancelled> {
+        let task = move || -> std::result::Result<(), Cancelled> {
             let target = TargetSpec::for_file(&world, file_id)?.and_then(|it| {
                 let tgt_kind = it.target_kind();
                 let (tgt_name, root, package) = match it {

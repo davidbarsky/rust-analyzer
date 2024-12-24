@@ -21,11 +21,6 @@
 //! `ExpnData::call_site` in rustc, [`MacroCallLoc::call_site`] in rust-analyzer.
 use std::fmt;
 
-#[cfg(not(feature = "ra-salsa"))]
-use crate::InternId;
-#[cfg(feature = "ra-salsa")]
-use ra_salsa::{InternId, InternValue};
-
 use crate::MacroCallId;
 
 // /// Interned [`SyntaxContextData`].
@@ -332,10 +327,8 @@ impl SyntaxContext {
         self == Self::ROOT
     }
     /// The root context, which is the parent of all other contexts. All [`FileId`]s have this context.
-    pub const ROOT: Self = SyntaxContext(
-        salsa::Id::from_u32(salsa::Id::MAX_U32 - 1),
-        std::marker::PhantomData,
-    );
+    pub const ROOT: Self =
+        SyntaxContext(salsa::Id::from_u32(salsa::Id::MAX_U32 - 1), std::marker::PhantomData);
 
     pub fn into_u32(self) -> u32 {
         self.0.as_u32()
