@@ -534,7 +534,7 @@ fn check_infer_with_mismatches(ra_fixture: &str, expect: Expect) {
 
 #[test]
 fn salsa_bug() {
-    let (db, pos) = TestDB::with_position(
+    let (mut db, pos) = TestDB::with_position(
         "
         //- /lib.rs
         trait Index {
