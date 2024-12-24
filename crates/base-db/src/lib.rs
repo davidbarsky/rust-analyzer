@@ -88,7 +88,7 @@ pub struct SourceRootInput {
 #[db_ext_macro::query_group]
 pub trait RootQueryDb: SourceDatabase + salsa::Database {
     /// Parses the file into the syntax tree.
-    // #[db_ext_macro::lru]
+    #[db_ext_macro::lru]
     fn parse(&self, file_id: EditionedFileId) -> Parse<ast::SourceFile>;
 
     /// Returns the set of errors obtained from parsing the file including validation errors.
@@ -106,6 +106,9 @@ pub trait RootQueryDb: SourceDatabase + salsa::Database {
 
     /// Crates whose root file is in `id`.
     fn source_root_crates(&self, id: SourceRootId) -> Arc<[CrateId]>;
+
+    #[db_ext_macro::transparent]
+    fn relevant_crates(&self, file_id: FileId) -> Arc<[CrateId]>;
 }
 
 #[salsa::db]
@@ -113,10 +116,10 @@ pub trait SourceDatabase: salsa::Database {
     /// Text of the file.
     fn file_text(&self, file_id: vfs::FileId) -> FileText;
 
-    fn set_file_text(&self, file_id: vfs::FileId, text: &str);
+    fn set_file_text(&mut self, file_id: vfs::FileId, text: &str);
 
     fn set_file_text_with_durability(
-        &self,
+        &mut self,
         file_id: vfs::FileId,
         text: &str,
         durability: Durability,
@@ -128,7 +131,7 @@ pub trait SourceDatabase: salsa::Database {
     fn file_source_root(&self, id: vfs::FileId) -> FileSourceRootInput;
 
     fn set_file_source_root_with_durability(
-        &self,
+        &mut self,
         id: vfs::FileId,
         source_root_id: SourceRootId,
         durability: Durability,
@@ -136,16 +139,18 @@ pub trait SourceDatabase: salsa::Database {
 
     /// Source root of the file.
     fn set_source_root_with_durability(
-        &self,
+        &mut self,
         source_root_id: SourceRootId,
         source_root: Arc<SourceRoot>,
         durability: Durability,
     );
 
-    fn resolve_path(&self, path: AnchoredPath<'_>) -> Option<FileId>;
-
-    /// Crates whose root's source root is the same as the source root of `file_id`
-    fn relevant_crates(&self, file_id: FileId) -> Arc<[CrateId]>;
+    fn resolve_path(&self, path: AnchoredPath<'_>) -> Option<FileId> {
+        // FIXME: this *somehow* should be platform agnostic...
+        let source_root = self.file_source_root(path.anchor);
+        let source_root = self.source_root(source_root.source_root_id(self));
+        source_root.source_root(self).resolve_path(path)
+    }
 }
 
 fn toolchain_channel(db: &dyn RootQueryDb, krate: CrateId) -> Option<ReleaseChannel> {
@@ -183,4 +188,11 @@ fn source_root_crates(db: &dyn RootQueryDb, id: SourceRootId) -> Arc<[CrateId]> 
     crates.sort();
     crates.dedup();
     crates.into_iter().collect()
+}
+
+fn relevant_crates(db: &dyn RootQueryDb, file_id: FileId) -> Arc<[CrateId]> {
+    let _p = tracing::info_span!("relevant_crates").entered();
+
+    let source_root = db.file_source_root(file_id);
+    db.source_root_crates(source_root.source_root_id(db))
 }

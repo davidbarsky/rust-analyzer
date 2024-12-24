@@ -10,21 +10,18 @@ use triomphe::Arc;
 
 use crate::{
     attr::{Attrs, AttrsWithOwner},
-    body::{scope::ExprScopes, Body, BodyAndSourceMap},
+    body::{scope::ExprScopes, Body, BodySourceMap},
     data::{
-        adt::{
-            EnumData, EnumVariantAndDiagnostics, EnumVariantData, StructAndDiagnostics, StructData,
-            VariantData,
-        },
-        ConstData, ExternCrateDeclData, FunctionData, ImplAndDiagnostics, ImplData, Macro2Data,
-        MacroRulesData, ProcMacroData, StaticData, TraitAliasData, TraitAndDiagnostics, TraitData,
-        TypeAliasData,
+        adt::{EnumData, EnumVariantData, StructData, VariantData},
+        ConstData, ExternCrateDeclData, FunctionData, ImplData, Macro2Data, MacroRulesData,
+        ProcMacroData, StaticData, TraitAliasData, TraitData, TypeAliasData,
     },
-    generics::{GenericParams, GenericParamsWithTypesSourceMap},
+    generics::GenericParams,
     import_map::ImportMap,
-    item_tree::{AttrOwner, ItemTree, ItemTreeAndSourceMap},
+    item_tree::{AttrOwner, ItemTree, ItemTreeSourceMaps},
     lang_item::{self, LangItem, LangItemTarget, LangItems},
-    nameres::DefMap,
+    nameres::{diagnostics::DefDiagnostics, DefMap},
+    type_ref::TypesSourceMap,
     visibility::{self, Visibility},
     AttrDefId, BlockId, BlockLoc, ConstBlockId, ConstBlockLoc, ConstId, ConstLoc, DefWithBodyId,
     EnumId, EnumLoc, EnumVariantId, EnumVariantLoc, ExternBlockId, ExternBlockLoc, ExternCrateId,
@@ -143,10 +140,16 @@ pub trait DefDatabase:
     fn block_item_tree(&self, block_id: BlockId) -> Arc<ItemTree>;
 
     #[db_ext_macro::invoke(ItemTree::file_item_tree_with_source_map_query)]
-    fn file_item_tree_with_source_map(&self, file_id: HirFileId) -> ItemTreeAndSourceMap;
+    fn file_item_tree_with_source_map(
+        &self,
+        file_id: HirFileId,
+    ) -> (Arc<ItemTree>, Arc<ItemTreeSourceMaps>);
 
     #[db_ext_macro::invoke(ItemTree::block_item_tree_with_source_map_query)]
-    fn block_item_tree_with_source_map(&self, block_id: BlockId) -> ItemTreeAndSourceMap;
+    fn block_item_tree_with_source_map(
+        &self,
+        block_id: BlockId,
+    ) -> (Arc<ItemTree>, Arc<ItemTreeSourceMaps>);
 
     #[db_ext_macro::invoke(DefMap::crate_def_map_query)]
     fn crate_def_map(&self, krate: CrateId) -> Arc<DefMap>;
@@ -165,14 +168,14 @@ pub trait DefDatabase:
     fn struct_data(&self, id: StructId) -> Arc<StructData>;
 
     #[db_ext_macro::invoke(StructData::struct_data_with_diagnostics_query)]
-    fn struct_data_with_diagnostics(&self, id: StructId) -> StructAndDiagnostics;
+    fn struct_data_with_diagnostics(&self, id: StructId) -> (Arc<StructData>, DefDiagnostics);
 
     #[db_ext_macro::transparent]
     #[db_ext_macro::invoke(StructData::union_data_query)]
     fn union_data(&self, id: UnionId) -> Arc<StructData>;
 
     #[db_ext_macro::invoke(StructData::union_data_with_diagnostics_query)]
-    fn union_data_with_diagnostics(&self, id: UnionId) -> StructAndDiagnostics;
+    fn union_data_with_diagnostics(&self, id: UnionId) -> (Arc<StructData>, DefDiagnostics);
 
     #[db_ext_macro::invoke(EnumData::enum_data_query)]
     fn enum_data(&self, e: EnumId) -> Arc<EnumData>;
@@ -182,7 +185,10 @@ pub trait DefDatabase:
     fn enum_variant_data(&self, id: EnumVariantId) -> Arc<EnumVariantData>;
 
     #[db_ext_macro::invoke(EnumVariantData::enum_variant_data_with_diagnostics_query)]
-    fn enum_variant_data_with_diagnostics(&self, id: EnumVariantId) -> EnumVariantAndDiagnostics;
+    fn enum_variant_data_with_diagnostics(
+        &self,
+        id: EnumVariantId,
+    ) -> (Arc<EnumVariantData>, DefDiagnostics);
 
     #[db_ext_macro::transparent]
     #[db_ext_macro::invoke(VariantData::variant_data)]
@@ -192,14 +198,14 @@ pub trait DefDatabase:
     fn impl_data(&self, e: ImplId) -> Arc<ImplData>;
 
     #[db_ext_macro::invoke(ImplData::impl_data_with_diagnostics_query)]
-    fn impl_data_with_diagnostics(&self, e: ImplId) -> ImplAndDiagnostics;
+    fn impl_data_with_diagnostics(&self, e: ImplId) -> (Arc<ImplData>, DefDiagnostics);
 
     #[db_ext_macro::transparent]
     #[db_ext_macro::invoke(TraitData::trait_data_query)]
     fn trait_data(&self, e: TraitId) -> Arc<TraitData>;
 
     #[db_ext_macro::invoke(TraitData::trait_data_with_diagnostics_query)]
-    fn trait_data_with_diagnostics(&self, tr: TraitId) -> TraitAndDiagnostics;
+    fn trait_data_with_diagnostics(&self, tr: TraitId) -> (Arc<TraitData>, DefDiagnostics);
 
     #[db_ext_macro::invoke(TraitAliasData::trait_alias_query)]
     fn trait_alias_data(&self, e: TraitAliasId) -> Arc<TraitAliasData>;
@@ -232,7 +238,7 @@ pub trait DefDatabase:
 
     #[db_ext_macro::invoke(Body::body_with_source_map_query)]
     #[db_ext_macro::lru]
-    fn body_with_source_map(&self, def: DefWithBodyId) -> BodyAndSourceMap;
+    fn body_with_source_map(&self, def: DefWithBodyId) -> (Arc<Body>, Arc<BodySourceMap>);
 
     #[db_ext_macro::invoke(Body::body_query)]
     fn body(&self, def: DefWithBodyId) -> Arc<Body>;
@@ -245,7 +251,10 @@ pub trait DefDatabase:
 
     /// If this returns `None` for the source map, that means it is the same as with the item tree.
     #[db_ext_macro::invoke(GenericParams::generic_params_with_source_map_query)]
-    fn generic_params_with_source_map(&self, def: GenericDefId) -> GenericParamsWithTypesSourceMap;
+    fn generic_params_with_source_map(
+        &self,
+        def: GenericDefId,
+    ) -> (Arc<GenericParams>, Option<Arc<TypesSourceMap>>);
 
     // region:attrs
 

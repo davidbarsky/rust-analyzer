@@ -252,7 +252,7 @@ impl<'a> DeclValidator<'a> {
             return;
         }
 
-        let source_map = self.db.body_with_source_map(func.into()).source_map;
+        let source_map = self.db.body_with_source_map(func.into()).1;
         for (id, replacement) in pats_replacements {
             let Ok(source_ptr) = source_map.pat_syntax(id) else {
                 continue;

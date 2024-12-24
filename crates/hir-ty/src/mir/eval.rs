@@ -380,7 +380,7 @@ impl MirEvalError {
                         writeln!(f, "In {closure:?}")?;
                     }
                 }
-                let source_map = db.body_with_source_map(*def).source_map;
+                let source_map = db.body_with_source_map(*def).1;
                 let span: InFile<SyntaxNodePtr> = match span {
                     MirSpan::ExprId(e) => match source_map.expr_syntax(*e) {
                         Ok(s) => s.map(|it| it.into()),

@@ -150,8 +150,7 @@ fn check_impl(ra_fixture: &str, allow_none: bool, only_types: bool, display_sour
     });
     let mut unexpected_type_mismatches = String::new();
     for def in defs {
-        let res = db.body_with_source_map(def);
-        let (body, body_source_map) = (res.body, res.source_map);
+        let (body, body_source_map) = db.body_with_source_map(def);
         let inference_result = db.infer(def);
 
         for (pat, mut ty) in inference_result.type_of_pat.iter() {
@@ -397,8 +396,7 @@ fn infer_with_mismatches(content: &str, include_mismatches: bool) -> String {
         DefWithBodyId::InTypeConstId(it) => it.source(&db).syntax().text_range().start(),
     });
     for def in defs {
-        let res = db.body_with_source_map(def);
-        let (body, source_map) = (res.body, res.source_map);
+        let (body, source_map) = db.body_with_source_map(def);
         let infer = db.infer(def);
         infer_def(infer, body, source_map);
     }
@@ -526,7 +524,7 @@ fn check_infer_with_mismatches(ra_fixture: &str, expect: Expect) {
 
 #[test]
 fn salsa_bug() {
-    let (db, pos) = TestDB::with_position(
+    let (mut db, pos) = TestDB::with_position(
         "
         //- /lib.rs
         trait Index {

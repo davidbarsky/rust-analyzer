@@ -1,4 +1,4 @@
-use base_db::{RootQueryDb, SourceDatabase};
+use base_db::SourceDatabase;
 use test_fixture::WithFixture;
 
 use crate::{db::DefDatabase, nameres::tests::TestDB, AdtId, ModuleDefId};
@@ -6,14 +6,6 @@ use crate::{db::DefDatabase, nameres::tests::TestDB, AdtId, ModuleDefId};
 fn check_def_map_is_not_recomputed(ra_fixture_initial: &str, ra_fixture_change: &str) {
     let (mut db, pos) = TestDB::with_position(ra_fixture_initial);
     let krate = db.fetch_test_crate();
-
-    let (db, pos) = TestDB::with_position(ra_fixture_initial);
-    let krate = {
-        let crate_graph = db.crate_graph();
-        // Some of these tests use minicore/proc-macros which will be injected as the first crate
-        crate_graph.iter().last().unwrap()
-    };
-
     {
         let events = db.log_executed(|| {
             db.crate_def_map(krate);
@@ -235,7 +227,7 @@ pub struct S {}
 
 #[test]
 fn typing_inside_a_function_should_not_invalidate_item_expansions() {
-    let (db, pos) = TestDB::with_position(
+    let (mut db, pos) = TestDB::with_position(
         r#"
 //- /lib.rs
 macro_rules! m {
@@ -284,7 +276,6 @@ m!(Z);
             let (_, module_data) = crate_def_map.modules.iter().last().unwrap();
             assert_eq!(module_data.scope.resolutions().count(), 4);
         });
-        dbg!(&events);
         let n_recalculated_item_trees =
             events.iter().filter(|it| it.contains("file_item_tree_shim")).count();
         assert_eq!(n_recalculated_item_trees, 0);

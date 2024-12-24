@@ -1818,8 +1818,7 @@ impl<'db> SemanticsImpl<'db> {
         let Some(def) = def else { return false };
         let enclosing_node = enclosing_item.as_ref().either(|i| i.syntax(), |v| v.syntax());
 
-        let res = self.db.body_with_source_map(def);
-        let (body, source_map) = (res.body, res.source_map);
+        let (body, source_map) = self.db.body_with_source_map(def);
 
         let file_id = self.find_file(expr.syntax()).file_id;
 
