@@ -3,7 +3,7 @@
 
 use std::sync;
 
-use base_db::{impl_intern_key, impl_wrapper, CrateId, Upcast};
+use base_db::{impl_intern_key, impl_wrapper, Crate, Upcast};
 use hir_def::{
     db::DefDatabase, hir::ExprId, layout::TargetDataLayout, AdtId, BlockId, CallableDefId,
     ConstParamId, DefWithBodyId, EnumVariantId, FunctionId, GeneralConstId, GenericDefId, ImplId,
@@ -103,7 +103,7 @@ pub trait HirDatabase: DefDatabase + Upcast<dyn DefDatabase> + std::fmt::Debug {
     fn layout_of_ty(&self, ty: Ty, env: Arc<TraitEnvironment>) -> Result<Arc<Layout>, LayoutError>;
 
     #[db_ext_macro::invoke(crate::layout::target_data_layout_query)]
-    fn target_data_layout(&self, krate: CrateId) -> Result<Arc<TargetDataLayout>, Arc<str>>;
+    fn target_data_layout(&self, krate: Crate) -> Result<Arc<TargetDataLayout>, Arc<str>>;
 
     #[db_ext_macro::invoke(crate::dyn_compatibility::dyn_compatibility_of_trait_query)]
     fn dyn_compatibility_of_trait(&self, trait_: TraitId) -> Option<DynCompatibilityViolation>;
@@ -196,7 +196,7 @@ pub trait HirDatabase: DefDatabase + Upcast<dyn DefDatabase> + std::fmt::Debug {
     fn generic_defaults(&self, def: GenericDefId) -> GenericDefaults;
 
     #[db_ext_macro::invoke(InherentImpls::inherent_impls_in_crate_query)]
-    fn inherent_impls_in_crate(&self, krate: CrateId) -> Arc<InherentImpls>;
+    fn inherent_impls_in_crate(&self, krate: Crate) -> Arc<InherentImpls>;
 
     #[db_ext_macro::invoke(InherentImpls::inherent_impls_in_block_query)]
     fn inherent_impls_in_block(&self, block: BlockId) -> Option<Arc<InherentImpls>>;
@@ -208,18 +208,18 @@ pub trait HirDatabase: DefDatabase + Upcast<dyn DefDatabase> + std::fmt::Debug {
     #[db_ext_macro::invoke(crate::method_resolution::incoherent_inherent_impl_crates)]
     fn incoherent_inherent_impl_crates(
         &self,
-        krate: CrateId,
+        krate: Crate,
         fp: TyFingerprint,
-    ) -> SmallVec<[CrateId; 2]>;
+    ) -> SmallVec<[Crate; 2]>;
 
     #[db_ext_macro::invoke(TraitImpls::trait_impls_in_crate_query)]
-    fn trait_impls_in_crate(&self, krate: CrateId) -> Arc<TraitImpls>;
+    fn trait_impls_in_crate(&self, krate: Crate) -> Arc<TraitImpls>;
 
     #[db_ext_macro::invoke(TraitImpls::trait_impls_in_block_query)]
     fn trait_impls_in_block(&self, block: BlockId) -> Option<Arc<TraitImpls>>;
 
     #[db_ext_macro::invoke(TraitImpls::trait_impls_in_deps_query)]
-    fn trait_impls_in_deps(&self, krate: CrateId) -> Arc<[Arc<TraitImpls>]>;
+    fn trait_impls_in_deps(&self, krate: Crate) -> Arc<[Arc<TraitImpls>]>;
 
     // Interned IDs for Chalk integration
     #[db_ext_macro::interned(CallableDefIdWrapper)]
@@ -252,23 +252,16 @@ pub trait HirDatabase: DefDatabase + Upcast<dyn DefDatabase> + std::fmt::Debug {
     #[db_ext_macro::invoke(chalk_db::trait_datum_query)]
     fn trait_datum(
         &self,
-        krate: CrateId,
+        krate: Crate,
         trait_id: chalk_db::TraitId,
     ) -> sync::Arc<chalk_db::TraitDatum>;
 
     #[db_ext_macro::invoke(chalk_db::adt_datum_query)]
-    fn adt_datum(
-        &self,
-        krate: CrateId,
-        struct_id: chalk_db::AdtId,
-    ) -> sync::Arc<chalk_db::AdtDatum>;
+    fn adt_datum(&self, krate: Crate, struct_id: chalk_db::AdtId) -> sync::Arc<chalk_db::AdtDatum>;
 
     #[db_ext_macro::invoke(chalk_db::impl_datum_query)]
-    fn impl_datum(
-        &self,
-        krate: CrateId,
-        impl_id: chalk_db::ImplId,
-    ) -> sync::Arc<chalk_db::ImplDatum>;
+    fn impl_datum(&self, krate: Crate, impl_id: chalk_db::ImplId)
+        -> sync::Arc<chalk_db::ImplDatum>;
 
     #[db_ext_macro::invoke(chalk_db::fn_def_datum_query)]
     fn fn_def_datum(&self, fn_def_id: FnDefId) -> sync::Arc<chalk_db::FnDefDatum>;
@@ -286,7 +279,7 @@ pub trait HirDatabase: DefDatabase + Upcast<dyn DefDatabase> + std::fmt::Debug {
     #[db_ext_macro::invoke(chalk_db::associated_ty_value_query)]
     fn associated_ty_value(
         &self,
-        krate: CrateId,
+        krate: Crate,
         id: chalk_db::AssociatedTyValueId,
     ) -> sync::Arc<chalk_db::AssociatedTyValue>;
 
@@ -301,7 +294,7 @@ pub trait HirDatabase: DefDatabase + Upcast<dyn DefDatabase> + std::fmt::Debug {
     #[db_ext_macro::invoke(crate::traits::trait_solve_query)]
     fn trait_solve(
         &self,
-        krate: CrateId,
+        krate: Crate,
         block: Option<BlockId>,
         goal: crate::Canonical<crate::InEnvironment<crate::Goal>>,
     ) -> Option<crate::Solution>;
@@ -309,7 +302,7 @@ pub trait HirDatabase: DefDatabase + Upcast<dyn DefDatabase> + std::fmt::Debug {
     #[db_ext_macro::invoke(chalk_db::program_clauses_for_chalk_env_query)]
     fn program_clauses_for_chalk_env(
         &self,
-        krate: CrateId,
+        krate: Crate,
         block: Option<BlockId>,
         env: chalk_ir::Environment<Interner>,
     ) -> chalk_ir::ProgramClauses<Interner>;

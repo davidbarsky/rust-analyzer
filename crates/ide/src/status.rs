@@ -8,8 +8,11 @@ use hir::{
     MacroFileId,
     Module,
 };
-use ide_db::base_db::{CrateData, RootQueryDb, SourceRootId, Upcast};
-use ide_db::{symbol_index::SymbolIndex, RootDatabase};
+use ide_db::{
+    base_db::{CrateData, ExtraCrateData, SourceRootId},
+    symbol_index::SymbolIndex,
+    RootDatabase,
+};
 use itertools::Itertools;
 use profile::Bytes;
 use span::{EditionedFileId, FileId};
@@ -48,27 +51,19 @@ pub(crate) fn status(db: &RootDatabase, file_id: Option<FileId>) -> String {
         if crates.is_empty() {
             format_to!(buf, "Does not belong to any crate");
         }
-
-        let crate_graph = Upcast::<dyn RootQueryDb>::upcast(db).crate_graph();
         for crate_id in crates {
-            let CrateData {
-                root_file_id,
-                edition,
-                version,
-                display_name,
-                cfg_options,
-                potential_cfg_options,
-                env,
-                dependencies,
-                origin,
-                is_proc_macro,
-            } = &crate_graph[crate_id];
+            let CrateData { root_file_id, edition, dependencies, origin, is_proc_macro } =
+                crate_id.data(db);
+            let ExtraCrateData { version, display_name, potential_cfg_options } =
+                &*crate_id.extra_data(db);
+            let cfg_options = crate_id.cfg_options(db);
+            let env = crate_id.env(db);
             format_to!(
                 buf,
                 "Crate: {}\n",
                 match display_name {
-                    Some(it) => format!("{it}({})", crate_id.into_raw()),
-                    None => format!("{}", crate_id.into_raw()),
+                    Some(it) => format!("{it}({:?})", crate_id),
+                    None => format!("{:?}", crate_id),
                 }
             );
             format_to!(buf, "    Root module file id: {}\n", root_file_id.index());
@@ -81,7 +76,7 @@ pub(crate) fn status(db: &RootDatabase, file_id: Option<FileId>) -> String {
             format_to!(buf, "    Is a proc macro crate: {}\n", is_proc_macro);
             let deps = dependencies
                 .iter()
-                .map(|dep| format!("{}={}", dep.name, dep.crate_id.into_raw()))
+                .map(|dep| format!("{}={:?}", dep.name, dep.crate_id))
                 .format(", ");
             format_to!(buf, "    Dependencies: {}\n", deps);
         }

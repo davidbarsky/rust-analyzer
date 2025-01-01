@@ -348,7 +348,7 @@ fn main() {
         expect![[r#"
             *|*
             ```rust
-            {closure#41984}
+            {closure#44032}
             impl Fn(i32) -> i32
             ```
             ___
@@ -372,7 +372,7 @@ fn main() {
         expect![[r#"
             *|*
             ```rust
-            {closure#54272}
+            {closure#56320}
             impl Fn(i32) -> i32
             ```
             ___
@@ -407,7 +407,7 @@ fn main() {
         expect![[r#"
             *|*
             ```rust
-            {closure#46080}
+            {closure#48128}
             impl FnOnce()
             ```
             ___
@@ -437,7 +437,7 @@ fn main() {
         expect![[r#"
             *|*
             ```rust
-            {closure#58368}
+            {closure#60416}
             impl FnMut()
             ```
             ___
@@ -463,7 +463,7 @@ fn main() {
 "#,
         expect![[r#"
             ```rust
-            {closure#39936}
+            {closure#41984}
             impl FnOnce() -> S2
             ```
             ___
@@ -3017,7 +3017,7 @@ fn main() {
         expect![[r#"
             *|*
             ```rust
-            {closure#41984}
+            {closure#44032}
             impl Fn(i32) -> i32
             ```
 
@@ -8791,7 +8791,7 @@ fn main() {
             S
             ```
             ___
-            Implements notable traits: Notable, Future<Output = u32>, Iterator<Item = S>"#]],
+            Implements notable traits: Future<Output = u32>, Iterator<Item = S>, Notable"#]],
     );
 }
 

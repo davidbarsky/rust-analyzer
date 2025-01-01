@@ -565,7 +565,7 @@ impl Evaluator<'_> {
                     }
                     String::from_utf8_lossy(&name_buf)
                 };
-                let value = self.db.crate_graph()[self.crate_id].env.get(&name);
+                let value = self.crate_id.env(self.db).get(&name);
                 match value {
                     None => {
                         // Write null as fail
@@ -832,7 +832,7 @@ impl Evaluator<'_> {
                     // render full paths.
                     Err(_) => {
                         let krate = locals.body.owner.krate(self.db.upcast());
-                        let edition = self.db.crate_graph()[krate].edition;
+                        let edition = krate.data(self.db).edition;
                         ty.display(self.db, edition).to_string()
                     }
                 };

@@ -3,8 +3,8 @@
 use std::{fmt, hash::BuildHasherDefault, panic, sync::Mutex};
 
 use base_db::{
-    AnchoredPath, CrateId, FileSourceRootInput, FileText, RootQueryDb, SourceDatabase, SourceRoot,
-    SourceRootId, SourceRootInput, Upcast,
+    AnchoredPath, Crate, CrateGraphBuilder, CratesMap, FileSourceRootInput, FileText, RootQueryDb,
+    SourceDatabase, SourceRoot, SourceRootId, SourceRootInput, Upcast,
 };
 use dashmap::{mapref::entry::Entry, DashMap};
 use hir_expand::{db::ExpandDatabase, files::FilePosition, InFile};
@@ -28,6 +28,7 @@ pub(crate) struct TestDB {
     files: Arc<DashMap<vfs::FileId, FileText, BuildHasherDefault<FxHasher>>>,
     source_roots: DashMap<SourceRootId, SourceRootInput, BuildHasherDefault<FxHasher>>,
     file_source_roots: Arc<DashMap<vfs::FileId, FileSourceRootInput, BuildHasherDefault<FxHasher>>>,
+    crates_map: Arc<CratesMap>,
     events: Arc<Mutex<Option<Vec<salsa::Event>>>>,
 }
 
@@ -39,8 +40,12 @@ impl Default for TestDB {
             files: Default::default(),
             source_roots: Default::default(),
             file_source_roots: Default::default(),
+            crates_map: Default::default(),
         };
         this.set_expand_proc_attr_macros_with_durability(true, Durability::HIGH);
+        // This needs to be here otherwise `CrateGraphBuilder` panics.
+        this.set_all_crates(Arc::new(Box::new([])));
+        CrateGraphBuilder::default().set_in_db(&mut this);
         this
     }
 }
@@ -162,20 +167,23 @@ impl SourceDatabase for TestDB {
 
         source_root.source_root(self).resolve_path(path)
     }
+
+    fn crates_map(&self) -> Arc<CratesMap> {
+        self.crates_map.clone()
+    }
 }
 
 impl TestDB {
-    pub(crate) fn fetch_test_crate(&self) -> CrateId {
-        let crate_graph = self.crate_graph();
-        let it = crate_graph
+    pub(crate) fn fetch_test_crate(&self) -> Crate {
+        let all_crates = self.all_crates();
+        all_crates
             .iter()
-            .find(|&idx| {
-                crate_graph[idx].display_name.as_ref().map(|it| it.canonical_name().as_str())
+            .copied()
+            .find(|&krate| {
+                krate.extra_data(self).display_name.as_ref().map(|it| it.canonical_name().as_str())
                     == Some("ra_test_fixture")
             })
-            .or_else(|| crate_graph.iter().next())
-            .unwrap();
-        it
+            .unwrap_or(all_crates[all_crates.len() - 1])
     }
 
     pub(crate) fn module_for_file(&self, file_id: FileId) -> ModuleId {

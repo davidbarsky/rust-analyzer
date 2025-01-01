@@ -12,7 +12,7 @@ use url::Url;
 
 use hir::{db::HirDatabase, sym, Adt, AsAssocItem, AssocItem, AssocItemContainer, HasAttrs};
 use ide_db::{
-    base_db::{CrateOrigin, LangCrateOrigin, ReleaseChannel, RootQueryDb},
+    base_db::{self, CrateOrigin, LangCrateOrigin, ReleaseChannel, RootQueryDb},
     defs::{Definition, NameClass, NameRefClass},
     documentation::{docs_with_rangemap, Documentation, HasDocs},
     helpers::pick_best_token,
@@ -504,7 +504,7 @@ fn get_doc_base_urls(
 
     let Some(krate) = krate else { return Default::default() };
     let Some(display_name) = krate.display_name(db) else { return Default::default() };
-    let crate_data = &db.crate_graph()[krate.into()];
+    let crate_data = &base_db::Crate::from(krate).data(db);
 
     let (web_base, local_base) = match &crate_data.origin {
         // std and co do not specify `html_root_url` any longer so we gotta handwrite this ourself.

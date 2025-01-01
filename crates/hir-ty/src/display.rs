@@ -7,7 +7,7 @@ use std::{
     mem::{self, size_of},
 };
 
-use base_db::CrateId;
+use base_db::Crate;
 use chalk_ir::{BoundVar, Safety, TyKind};
 use either::Either;
 use hir_def::{
@@ -273,9 +273,7 @@ impl HirFormatter<'_> {
     pub fn edition(&self) -> Edition {
         match self.display_target {
             DisplayTarget::Diagnostics { edition } => edition,
-            DisplayTarget::SourceCode { module_id, .. } => {
-                self.db.crate_graph()[module_id.krate()].edition
-            }
+            DisplayTarget::SourceCode { module_id, .. } => module_id.krate().data(self.db).edition,
             DisplayTarget::Test => Edition::CURRENT,
         }
     }
@@ -550,8 +548,7 @@ fn render_const_scalar(
 ) -> Result<(), HirDisplayError> {
     // FIXME: We need to get krate from the final callers of the hir display
     // infrastructure and have it here as a field on `f`.
-    let trait_env =
-        TraitEnvironment::empty(*f.db.crate_graph().crates_in_topological_order().last().unwrap());
+    let trait_env = TraitEnvironment::empty(*f.db.all_crates().last().unwrap());
     match ty.kind(Interner) {
         TyKind::Scalar(s) => match s {
             Scalar::Bool => write!(f, "{}", b[0] != 0),
@@ -1580,7 +1577,7 @@ fn fn_traits(db: &dyn DefDatabase, trait_: TraitId) -> impl Iterator<Item = Trai
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum SizedByDefault {
     NotSized,
-    Sized { anchor: CrateId },
+    Sized { anchor: Crate },
 }
 
 impl SizedByDefault {
@@ -2135,8 +2132,8 @@ impl HirDisplayWithTypesMap for Path {
                 // Resolve `$crate` to the crate's display name.
                 // FIXME: should use the dependency name instead if available, but that depends on
                 // the crate invoking `HirDisplay`
-                let crate_graph = f.db.crate_graph();
-                let name = crate_graph[*id]
+                let crate_data = id.extra_data(f.db);
+                let name = crate_data
                     .display_name
                     .as_ref()
                     .map(|name| name.canonical_name())

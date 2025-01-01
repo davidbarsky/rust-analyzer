@@ -2,7 +2,9 @@
     (
         Module {
             id: ModuleId {
-                krate: Idx::<CrateData>(0),
+                krate: Crate {
+                    [salsa id]: Id(2c00),
+                },
                 block: None,
                 local_id: Idx::<ModuleData>(0),
             },
@@ -13,7 +15,7 @@
                 def: TypeAlias(
                     TypeAlias {
                         id: TypeAliasId(
-                            Id(8800),
+                            Id(9000),
                         ),
                     },
                 ),
@@ -44,7 +46,7 @@
                 def: Const(
                     Const {
                         id: ConstId(
-                            Id(8000),
+                            Id(8800),
                         ),
                     },
                 ),
@@ -75,7 +77,7 @@
                 def: Const(
                     Const {
                         id: ConstId(
-                            Id(8002),
+                            Id(8802),
                         ),
                     },
                 ),
@@ -107,7 +109,7 @@
                     Enum(
                         Enum {
                             id: EnumId(
-                                Id(6800),
+                                Id(7000),
                             ),
                         },
                     ),
@@ -140,7 +142,7 @@
                     Macro {
                         id: Macro2Id(
                             Macro2Id(
-                                Id(6400),
+                                Id(6c00),
                             ),
                         ),
                     },
@@ -173,7 +175,7 @@
                     Macro {
                         id: Macro2Id(
                             Macro2Id(
-                                Id(6400),
+                                Id(6c00),
                             ),
                         ),
                     },
@@ -205,7 +207,7 @@
                 def: Static(
                     Static {
                         id: StaticId(
-                            Id(8400),
+                            Id(8c00),
                         ),
                     },
                 ),
@@ -237,7 +239,7 @@
                     Struct(
                         Struct {
                             id: StructId(
-                                Id(6001),
+                                Id(6801),
                             ),
                         },
                     ),
@@ -270,14 +272,14 @@
                     Struct(
                         Struct {
                             id: StructId(
-                                Id(6000),
+                                Id(6800),
                             ),
                         },
                     ),
                 ),
                 loc: DeclarationLocation {
                     hir_file_id: MacroFile(
-                        Id(4c00),
+                        Id(5400),
                     ),
                     ptr: SyntaxNodePtr {
                         kind: STRUCT,
@@ -300,7 +302,7 @@
                     Struct(
                         Struct {
                             id: StructId(
-                                Id(6005),
+                                Id(6805),
                             ),
                         },
                     ),
@@ -335,7 +337,7 @@
                     Struct(
                         Struct {
                             id: StructId(
-                                Id(6006),
+                                Id(6806),
                             ),
                         },
                     ),
@@ -370,7 +372,7 @@
                     Struct(
                         Struct {
                             id: StructId(
-                                Id(6007),
+                                Id(6807),
                             ),
                         },
                     ),
@@ -403,7 +405,7 @@
                     Struct(
                         Struct {
                             id: StructId(
-                                Id(6002),
+                                Id(6802),
                             ),
                         },
                     ),
@@ -435,7 +437,7 @@
                 def: Trait(
                     Trait {
                         id: TraitId(
-                            Id(7800),
+                            Id(8000),
                         ),
                     },
                 ),
@@ -467,7 +469,7 @@
                     Macro {
                         id: Macro2Id(
                             Macro2Id(
-                                Id(6400),
+                                Id(6c00),
                             ),
                         ),
                     },
@@ -500,7 +502,7 @@
                     Union(
                         Union {
                             id: UnionId(
-                                Id(7000),
+                                Id(7800),
                             ),
                         },
                     ),
@@ -532,7 +534,9 @@
                 def: Module(
                     Module {
                         id: ModuleId {
-                            krate: Idx::<CrateData>(0),
+                            krate: Crate {
+                                [salsa id]: Id(2c00),
+                            },
                             block: None,
                             local_id: Idx::<ModuleData>(1),
                         },
@@ -565,7 +569,9 @@
                 def: Module(
                     Module {
                         id: ModuleId {
-                            krate: Idx::<CrateData>(0),
+                            krate: Crate {
+                                [salsa id]: Id(2c00),
+                            },
                             block: None,
                             local_id: Idx::<ModuleData>(2),
                         },
@@ -599,7 +605,7 @@
                     Macro {
                         id: MacroRulesId(
                             MacroRulesId(
-                                Id(4401),
+                                Id(4c01),
                             ),
                         ),
                     },
@@ -631,7 +637,7 @@
                 def: Function(
                     Function {
                         id: FunctionId(
-                            Id(7c03),
+                            Id(8403),
                         ),
                     },
                 ),
@@ -664,7 +670,7 @@
                 def: Function(
                     Function {
                         id: FunctionId(
-                            Id(7c02),
+                            Id(8402),
                         ),
                     },
                 ),
@@ -698,7 +704,7 @@
                     Macro {
                         id: MacroRulesId(
                             MacroRulesId(
-                                Id(4400),
+                                Id(4c00),
                             ),
                         ),
                     },
@@ -730,7 +736,7 @@
                 def: Function(
                     Function {
                         id: FunctionId(
-                            Id(7c00),
+                            Id(8400),
                         ),
                     },
                 ),
@@ -762,7 +768,7 @@
                     Macro {
                         id: MacroRulesId(
                             MacroRulesId(
-                                Id(4401),
+                                Id(4c01),
                             ),
                         ),
                     },
@@ -794,7 +800,7 @@
                 def: Function(
                     Function {
                         id: FunctionId(
-                            Id(7c01),
+                            Id(8401),
                         ),
                     },
                 ),
@@ -827,7 +833,9 @@
     (
         Module {
             id: ModuleId {
-                krate: Idx::<CrateData>(0),
+                krate: Crate {
+                    [salsa id]: Id(2c00),
+                },
                 block: None,
                 local_id: Idx::<ModuleData>(1),
             },
@@ -839,7 +847,7 @@
                     Struct(
                         Struct {
                             id: StructId(
-                                Id(6003),
+                                Id(6803),
                             ),
                         },
                     ),
@@ -871,7 +879,9 @@
     (
         Module {
             id: ModuleId {
-                krate: Idx::<CrateData>(0),
+                krate: Crate {
+                    [salsa id]: Id(2c00),
+                },
                 block: None,
                 local_id: Idx::<ModuleData>(2),
             },
@@ -883,7 +893,7 @@
                     Macro {
                         id: Macro2Id(
                             Macro2Id(
-                                Id(6400),
+                                Id(6c00),
                             ),
                         ),
                     },
@@ -916,7 +926,7 @@
                     Struct(
                         Struct {
                             id: StructId(
-                                Id(6004),
+                                Id(6804),
                             ),
                         },
                     ),
@@ -949,7 +959,7 @@
                     Macro {
                         id: Macro2Id(
                             Macro2Id(
-                                Id(6400),
+                                Id(6c00),
                             ),
                         ),
                     },
@@ -982,7 +992,7 @@
                     Struct(
                         Struct {
                             id: StructId(
-                                Id(6004),
+                                Id(6804),
                             ),
                         },
                     ),
@@ -1015,7 +1025,7 @@
                     Struct(
                         Struct {
                             id: StructId(
-                                Id(6004),
+                                Id(6804),
                             ),
                         },
                     ),

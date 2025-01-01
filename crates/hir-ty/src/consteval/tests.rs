@@ -95,8 +95,7 @@ fn check_answer(ra_fixture: &str, check: impl FnOnce(&[u8], &MemoryMap)) {
 fn pretty_print_err(e: ConstEvalError, db: TestDB) -> String {
     let mut err = String::new();
     let span_formatter = |file, range| format!("{file:?} {range:?}");
-    let edition =
-        db.crate_graph()[*db.crate_graph().crates_in_topological_order().last().unwrap()].edition;
+    let edition = db.all_crates().last().unwrap().data(&db).edition;
     match e {
         ConstEvalError::MirLowerError(e) => e.pretty_print(&mut err, &db, span_formatter, edition),
         ConstEvalError::MirEvalError(e) => e.pretty_print(&mut err, &db, span_formatter, edition),

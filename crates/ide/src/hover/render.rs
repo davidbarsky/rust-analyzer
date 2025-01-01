@@ -8,7 +8,7 @@ use hir::{
     MethodViolationCode, Name, Semantics, Symbol, Trait, Type, TypeInfo, VariantDef,
 };
 use ide_db::{
-    base_db::RootQueryDb,
+    base_db,
     defs::Definition,
     documentation::HasDocs,
     famous_defs::FamousDefs,
@@ -415,8 +415,11 @@ pub(super) fn path(
     item_name: Option<String>,
     edition: Edition,
 ) -> String {
-    let crate_name =
-        db.crate_graph()[module.krate().into()].display_name.as_ref().map(|it| it.to_string());
+    let crate_name = base_db::Crate::from(module.krate())
+        .extra_data(db)
+        .display_name
+        .as_ref()
+        .map(|it| it.to_string());
     let module_path = module
         .path_to_root(db)
         .into_iter()

@@ -2,7 +2,7 @@
 
 use std::{borrow::Cow, hash::Hash, ops, slice};
 
-use base_db::CrateId;
+use base_db::Crate;
 use cfg::{CfgExpr, CfgOptions};
 use either::Either;
 use hir_expand::{
@@ -43,7 +43,7 @@ impl Attrs {
         (**self).iter().find(|attr| attr.id == id)
     }
 
-    pub(crate) fn filter(db: &dyn DefDatabase, krate: CrateId, raw_attrs: RawAttrs) -> Attrs {
+    pub(crate) fn filter(db: &dyn DefDatabase, krate: Crate, raw_attrs: RawAttrs) -> Attrs {
         Attrs(raw_attrs.filter(db.upcast(), krate))
     }
 }
@@ -75,7 +75,6 @@ impl Attrs {
         // FIXME: There should be some proper form of mapping between item tree field ids and hir field ids
         let mut res = ArenaMap::default();
 
-        let crate_graph = db.crate_graph();
         let item_tree;
         let (parent, fields, krate) = match v {
             VariantId::EnumVariantId(it) => {
@@ -101,12 +100,12 @@ impl Attrs {
             }
         };
 
-        let cfg_options = &crate_graph[krate].cfg_options;
+        let cfg_options = krate.cfg_options(db);
 
         let mut idx = 0;
         for (id, _field) in fields.iter().enumerate() {
             let attrs = item_tree.attrs(db, krate, AttrOwner::make_field_indexed(parent, id));
-            if attrs.is_cfg_enabled(cfg_options) {
+            if attrs.is_cfg_enabled(&cfg_options) {
                 res.insert(Idx::from_raw(RawIdx::from(idx)), attrs);
                 idx += 1;
             }

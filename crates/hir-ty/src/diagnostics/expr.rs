@@ -4,7 +4,7 @@
 
 use std::fmt;
 
-use base_db::CrateId;
+use base_db::Crate;
 use chalk_solve::rust_ir::AdtKind;
 use either::Either;
 use hir_def::{
@@ -629,7 +629,7 @@ fn missing_match_arms<'p>(
     scrut_ty: &Ty,
     witnesses: Vec<WitnessPat<'p>>,
     arms_is_empty: bool,
-    krate: CrateId,
+    krate: Crate,
 ) -> String {
     struct DisplayWitness<'a, 'p>(&'a WitnessPat<'p>, &'a MatchCheckCtx<'p>, Edition);
     impl fmt::Display for DisplayWitness<'_, '_> {
@@ -640,7 +640,7 @@ fn missing_match_arms<'p>(
         }
     }
 
-    let edition = cx.db.crate_graph()[krate].edition;
+    let edition = krate.data(cx.db).edition;
     let non_empty_enum = match scrut_ty.as_adt() {
         Some((AdtId::EnumId(e), _)) => !cx.db.enum_data(e).variants.is_empty(),
         _ => false,
