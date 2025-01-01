@@ -3,8 +3,8 @@
 use std::{fmt, hash::BuildHasherDefault, panic, sync::Mutex};
 
 use base_db::{
-    FileSourceRootInput, FileText, RootQueryDb, SourceDatabase, SourceRoot, SourceRootId,
-    SourceRootInput, Upcast,
+    CrateGraphBuilder, CratesMap, FileSourceRootInput, FileText, RootQueryDb, SourceDatabase,
+    SourceRoot, SourceRootId, SourceRootInput, Upcast,
 };
 use dashmap::{mapref::entry::Entry, DashMap};
 use hir_def::{db::DefDatabase, ModuleId};
@@ -23,6 +23,7 @@ pub(crate) struct TestDB {
     files: Arc<DashMap<vfs::FileId, FileText, BuildHasherDefault<FxHasher>>>,
     source_roots: Arc<DashMap<SourceRootId, SourceRootInput, BuildHasherDefault<FxHasher>>>,
     file_source_roots: Arc<DashMap<vfs::FileId, FileSourceRootInput, BuildHasherDefault<FxHasher>>>,
+    crates_map: Arc<CratesMap>,
     events: Arc<Mutex<Option<Vec<salsa::Event>>>>,
 }
 
@@ -34,8 +35,12 @@ impl Default for TestDB {
             files: Default::default(),
             source_roots: Default::default(),
             file_source_roots: Default::default(),
+            crates_map: Default::default(),
         };
         this.set_expand_proc_attr_macros_with_durability(true, Durability::HIGH);
+        // This needs to be here otherwise `CrateGraphBuilder` panics.
+        this.set_all_crates(Arc::new(Box::new([])));
+        CrateGraphBuilder::default().set_in_db(&mut this);
         this
     }
 }
@@ -136,6 +141,10 @@ impl SourceDatabase for TestDB {
         let input = SourceRootInput::builder(source_root).durability(durability).new(self);
         self.source_roots.insert(source_root_id, input);
     }
+
+    fn crates_map(&self) -> Arc<CratesMap> {
+        self.crates_map.clone()
+    }
 }
 
 #[salsa::db]
@@ -172,8 +181,7 @@ impl TestDB {
         &self,
     ) -> FxHashMap<EditionedFileId, Vec<(TextRange, String)>> {
         let mut files = Vec::new();
-        let crate_graph = self.crate_graph();
-        for krate in crate_graph.iter() {
+        for &krate in self.all_crates().iter() {
             let crate_def_map = self.crate_def_map(krate);
             for (module_id, _) in crate_def_map.modules() {
                 let file_id = crate_def_map[module_id].origin.file_id();

@@ -5,7 +5,7 @@ mod asm;
 
 use std::mem;
 
-use base_db::CrateId;
+use base_db::Crate;
 use either::Either;
 use hir_expand::{
     name::{AsName, Name},
@@ -45,7 +45,7 @@ use crate::{
     item_scope::BuiltinShadowMode,
     lang_item::LangItem,
     lower::LowerCtx,
-    nameres::{DefMap, MacroSubNs},
+    nameres::{DefMap, LocalDefMap, MacroSubNs},
     path::{GenericArgs, Path},
     type_ref::{Mutability, Rawness, TypeRef},
     AdtId, BlockId, BlockLoc, ConstBlockLoc, DefWithBodyId, MacroId, ModuleDefId, UnresolvedMacro,
@@ -59,7 +59,7 @@ pub(super) fn lower(
     expander: Expander,
     params: Option<(ast::ParamList, impl Iterator<Item = bool>)>,
     body: Option<ast::Expr>,
-    krate: CrateId,
+    krate: Crate,
     is_async_fn: bool,
 ) -> (Body, BodySourceMap) {
     // We cannot leave the root span map empty and let any identifier from it be treated as root,
@@ -73,11 +73,13 @@ pub(super) fn lower(
         };
         Arc::clone(span_map)
     });
+    let (def_map, local_def_map) = expander.module.local_def_map(db);
     ExprCollector {
         db,
         owner,
         krate,
-        def_map: expander.module.def_map(db),
+        def_map,
+        local_def_map,
         source_map: BodySourceMap::default(),
         ast_id_map: db.ast_id_map(expander.current_file_id()),
         body: Body::default(),
@@ -98,8 +100,9 @@ struct ExprCollector<'a> {
     expander: Expander,
     owner: DefWithBodyId,
     def_map: Arc<DefMap>,
+    local_def_map: Arc<LocalDefMap>,
     ast_id_map: Arc<AstIdMap>,
-    krate: CrateId,
+    krate: Crate,
     body: Body,
     source_map: BodySourceMap,
 
@@ -1210,6 +1213,7 @@ impl ExprCollector<'_> {
             None => self.expander.enter_expand(self.db, mcall, |path| {
                 self.def_map
                     .resolve_path(
+                        &self.local_def_map,
                         self.db,
                         module,
                         path,
@@ -1504,6 +1508,7 @@ impl ExprCollector<'_> {
                     // This could also be a single-segment path pattern. To
                     // decide that, we need to try resolving the name.
                     let (resolved, _) = self.def_map.resolve_path(
+                        &self.local_def_map,
                         self.db,
                         self.expander.module.local_id,
                         &name.clone().into(),

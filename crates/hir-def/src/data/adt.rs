@@ -1,6 +1,6 @@
 //! Defines hir-level representation of structs, enums and unions
 
-use base_db::CrateId;
+use base_db::Crate;
 use bitflags::bitflags;
 use cfg::CfgOptions;
 use either::Either;
@@ -88,7 +88,7 @@ pub struct FieldData {
 
 fn repr_from_value(
     db: &dyn DefDatabase,
-    krate: CrateId,
+    krate: Crate,
     item_tree: &ItemTree,
     of: AttrOwner,
 ) -> Option<ReprOptions> {
@@ -214,7 +214,7 @@ impl StructData {
             loc.container.local_id,
             loc.id.tree_id(),
             &item_tree,
-            &db.crate_graph()[krate].cfg_options,
+            &krate.cfg_options(db),
             FieldParent::Struct(loc.id.value),
             &strukt.fields,
             None,
@@ -266,7 +266,7 @@ impl StructData {
             loc.container.local_id,
             loc.id.tree_id(),
             &item_tree,
-            &db.crate_graph()[krate].cfg_options,
+            &krate.cfg_options(db),
             FieldParent::Union(loc.id.value),
             &union.fields,
             None,
@@ -369,7 +369,7 @@ impl EnumVariantData {
             container.local_id,
             loc.id.tree_id(),
             &item_tree,
-            &db.crate_graph()[krate].cfg_options,
+            &krate.cfg_options(db),
             FieldParent::Variant(loc.id.value),
             &variant.fields,
             Some(item_tree[loc.parent.lookup(db).id.value].visibility),
@@ -440,7 +440,7 @@ pub enum StructKind {
 
 fn lower_fields(
     db: &dyn DefDatabase,
-    krate: CrateId,
+    krate: Crate,
     container: LocalModuleId,
     tree_id: TreeId,
     item_tree: &ItemTree,

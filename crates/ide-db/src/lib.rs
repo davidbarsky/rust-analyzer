@@ -52,9 +52,8 @@ use salsa::{Durability, Setter};
 use std::{fmt, hash::BuildHasherDefault, mem::ManuallyDrop};
 
 use base_db::{
-    db_ext_macro::{self},
-    FileSourceRootInput, FileText, RootQueryDb, SourceDatabase, SourceRoot, SourceRootId,
-    SourceRootInput, Upcast, DEFAULT_FILE_TEXT_LRU_CAP,
+    db_ext_macro, CrateGraphBuilder, CratesMap, FileSourceRootInput, FileText, RootQueryDb,
+    SourceDatabase, SourceRoot, SourceRootId, SourceRootInput, Upcast, DEFAULT_FILE_TEXT_LRU_CAP,
 };
 use hir::{
     db::{DefDatabase, ExpandDatabase, HirDatabase},
@@ -88,6 +87,7 @@ pub struct RootDatabase {
     files: Arc<DashMap<vfs::FileId, FileText, BuildHasherDefault<FxHasher>>>,
     source_roots: Arc<DashMap<SourceRootId, SourceRootInput, BuildHasherDefault<FxHasher>>>,
     file_source_roots: Arc<DashMap<vfs::FileId, FileSourceRootInput, BuildHasherDefault<FxHasher>>>,
+    crates_map: Arc<CratesMap>,
 }
 
 impl std::panic::RefUnwindSafe for RootDatabase {}
@@ -110,6 +110,7 @@ impl Clone for RootDatabase {
             files: self.files.clone(),
             source_roots: self.source_roots.clone(),
             file_source_roots: self.file_source_roots.clone(),
+            crates_map: self.crates_map.clone(),
         }
     }
 }
@@ -227,6 +228,10 @@ impl SourceDatabase for RootDatabase {
         let input = FileSourceRootInput::builder(source_root_id).durability(durability).new(self);
         self.file_source_roots.insert(id, input);
     }
+
+    fn crates_map(&self) -> Arc<CratesMap> {
+        self.crates_map.clone()
+    }
 }
 
 impl Default for RootDatabase {
@@ -242,8 +247,11 @@ impl RootDatabase {
             files: Default::default(),
             source_roots: Default::default(),
             file_source_roots: Default::default(),
+            crates_map: Default::default(),
         };
-        db.set_crate_graph_with_durability(Default::default(), Durability::HIGH);
+        // This needs to be here otherwise `CrateGraphBuilder` will panic.
+        db.set_all_crates(Arc::new(Box::new([])));
+        CrateGraphBuilder::default().set_in_db(&mut db);
         db.set_proc_macros_with_durability(Default::default(), Durability::HIGH);
         db.set_local_roots_with_durability(Default::default(), Durability::HIGH);
         db.set_library_roots_with_durability(Default::default(), Durability::HIGH);
@@ -298,6 +306,7 @@ impl RootDatabase {
             files: self.files.clone(),
             source_roots: self.source_roots.clone(),
             file_source_roots: self.file_source_roots.clone(),
+            crates_map: self.crates_map.clone(),
         }
     }
 }

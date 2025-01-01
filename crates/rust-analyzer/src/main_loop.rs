@@ -10,7 +10,7 @@ use std::{
 
 use always_assert::always;
 use crossbeam_channel::{select, Receiver};
-use ide_db::base_db::{RootQueryDb, SourceDatabase, VfsPath};
+use ide_db::base_db::{SourceDatabase, VfsPath};
 use lsp_server::{Connection, Notification, Request};
 use lsp_types::{notification::Notification as _, TextDocumentIdentifier};
 use stdx::thread::ThreadIntent;
@@ -485,8 +485,10 @@ impl GlobalState {
         if !self.fetch_workspaces_queue.op_in_progress() {
             if let Some((cause, ())) = self.fetch_build_data_queue.should_start_op() {
                 self.fetch_build_data(cause);
-            } else if let Some((cause, paths)) = self.fetch_proc_macros_queue.should_start_op() {
-                self.fetch_proc_macros(cause, paths);
+            } else if let Some((cause, (change, paths))) =
+                self.fetch_proc_macros_queue.should_start_op()
+            {
+                self.fetch_proc_macros(cause, change, paths);
             }
         }
 
@@ -779,9 +781,10 @@ impl GlobalState {
                 let (state, msg) = match progress {
                     ProcMacroProgress::Begin => (Some(Progress::Begin), None),
                     ProcMacroProgress::Report(msg) => (Some(Progress::Report), Some(msg)),
-                    ProcMacroProgress::End(proc_macro_load_result) => {
+                    ProcMacroProgress::End(change) => {
                         self.fetch_proc_macros_queue.op_completed(true);
-                        self.set_proc_macros(proc_macro_load_result);
+                        self.analysis_host.apply_change(change);
+                        self.finish_loading_crate_graph();
                         (Some(Progress::End), None)
                     }
                 };
@@ -881,16 +884,15 @@ impl GlobalState {
                 });
             }
             QueuedTask::CheckProcMacroSources(modified_rust_files) => {
-                let crate_graph = self.analysis_host.raw_database().crate_graph();
                 let snap = self.snapshot();
                 self.task_pool.handle.spawn_with_sender(stdx::thread::ThreadIntent::Worker, {
                     move |sender| {
                         if modified_rust_files.into_iter().any(|file_id| {
                             // FIXME: Check whether these files could be build script related
                             match snap.analysis.crates_for(file_id) {
-                                Ok(crates) => {
-                                    crates.iter().any(|&krate| crate_graph[krate].is_proc_macro)
-                                }
+                                Ok(crates) => crates.iter().any(|&krate| {
+                                    snap.analysis.is_proc_macro_crate(krate).is_ok_and(|it| it)
+                                }),
                                 _ => false,
                             }
                         }) {

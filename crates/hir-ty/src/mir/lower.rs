@@ -1918,7 +1918,7 @@ impl<'ctx> MirLowerCtx<'ctx> {
 
     fn edition(&self) -> Edition {
         let krate = self.owner.krate(self.db.upcast());
-        self.db.crate_graph()[krate].edition
+        krate.data(self.db).edition
     }
 
     fn drop_until_scope(
@@ -2111,7 +2111,7 @@ pub fn mir_body_for_closure_query(
 
 pub fn mir_body_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Result<Arc<MirBody>> {
     let krate = def.krate(db.upcast());
-    let edition = db.crate_graph()[krate].edition;
+    let edition = krate.data(db).edition;
     let detail = match def {
         DefWithBodyId::FunctionId(it) => {
             db.function_data(it).name.display(db.upcast(), edition).to_string()

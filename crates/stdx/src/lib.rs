@@ -5,6 +5,7 @@ use std::process::Command;
 use std::{cmp::Ordering, ops, time::Instant};
 
 pub mod anymap;
+mod build_hasher_default;
 mod macros;
 pub mod non_empty_vec;
 pub mod panic_context;
@@ -15,6 +16,8 @@ pub mod thread;
 
 pub use always_assert::{always, never};
 pub use itertools;
+
+pub use build_hasher_default::BuildHasherDefault;
 
 #[inline(always)]
 pub fn is_ci() -> bool {

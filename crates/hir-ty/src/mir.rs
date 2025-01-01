@@ -12,7 +12,7 @@ use crate::{
     CallableDefId, ClosureId, Const, ConstScalar, InferenceResult, Interner, MemoryMap,
     Substitution, TraitEnvironment, Ty, TyKind,
 };
-use base_db::CrateId;
+use base_db::Crate;
 use chalk_ir::Mutability;
 use either::Either;
 use hir_def::{
@@ -143,7 +143,7 @@ impl<V, T> ProjectionElem<V, T> {
         mut base: Ty,
         db: &dyn HirDatabase,
         closure_field: impl FnOnce(ClosureId, &Substitution, usize) -> Ty,
-        krate: CrateId,
+        krate: Crate,
     ) -> Ty {
         if matches!(base.kind(Interner), TyKind::Alias(_) | TyKind::AssociatedType(..)) {
             base = normalize(
@@ -162,7 +162,7 @@ impl<V, T> ProjectionElem<V, T> {
                 _ => {
                     never!(
                         "Overloaded deref on type {} is not a projection",
-                        base.display(db, db.crate_graph()[krate].edition)
+                        base.display(db, krate.data(db).edition)
                     );
                     TyKind::Error.intern(Interner)
                 }

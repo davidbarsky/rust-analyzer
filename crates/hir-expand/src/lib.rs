@@ -31,7 +31,7 @@ use triomphe::Arc;
 use core::fmt;
 use std::hash::Hash;
 
-use base_db::CrateId;
+use base_db::Crate;
 use either::Either;
 use span::{
     Edition, EditionedFileId, ErasedFileAstId, FileAstId, HirFileIdRepr, Span, SpanAnchor,
@@ -150,7 +150,7 @@ impl ExpandError {
 pub enum ExpandErrorKind {
     /// Attribute macro expansion is disabled.
     ProcMacroAttrExpansionDisabled,
-    MissingProcMacroExpander(CrateId),
+    MissingProcMacroExpander(Crate),
     /// The macro for this call is disabled.
     MacroDisabled,
     /// The macro definition has errors.
@@ -191,7 +191,7 @@ impl ExpandErrorKind {
                 kind: "proc-macro-disabled",
             },
             &ExpandErrorKind::MissingProcMacroExpander(def_crate) => {
-                match db.proc_macros().get_error_for_crate(def_crate) {
+                match db.proc_macros_for_crate(def_crate).as_ref().and_then(|it| it.get_error()) {
                     Some((e, hard_err)) => RenderedExpandError {
                         message: e.to_owned(),
                         error: hard_err,
@@ -241,14 +241,14 @@ impl From<mbe::ExpandError> for ExpandError {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MacroCallLoc {
     pub def: MacroDefId,
-    pub krate: CrateId,
+    pub krate: Crate,
     pub kind: MacroCallKind,
     pub ctxt: SyntaxContextId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MacroDefId {
-    pub krate: CrateId,
+    pub krate: Crate,
     pub edition: Edition,
     pub kind: MacroDefKind,
     pub local_inner: bool,
@@ -508,7 +508,7 @@ impl MacroDefId {
     pub fn make_call(
         self,
         db: &dyn ExpandDatabase,
-        krate: CrateId,
+        krate: Crate,
         kind: MacroCallKind,
         ctxt: SyntaxContextId,
     ) -> MacroCallId {

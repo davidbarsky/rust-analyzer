@@ -1,6 +1,6 @@
 //! Constant evaluation details
 
-use base_db::CrateId;
+use base_db::Crate;
 use chalk_ir::{cast::Cast, BoundVar, DebruijnIndex};
 use hir_def::{
     body::{Body, HygieneId},
@@ -156,7 +156,7 @@ pub fn intern_const_ref(
     db: &dyn HirDatabase,
     value: &LiteralConstRef,
     ty: Ty,
-    krate: CrateId,
+    krate: Crate,
 ) -> Const {
     let layout = db.layout_of_ty(ty.clone(), TraitEnvironment::empty(krate));
     let bytes = match value {
@@ -179,7 +179,7 @@ pub fn intern_const_ref(
 }
 
 /// Interns a possibly-unknown target usize
-pub fn usize_const(db: &dyn HirDatabase, value: Option<u128>, krate: CrateId) -> Const {
+pub fn usize_const(db: &dyn HirDatabase, value: Option<u128>, krate: Crate) -> Const {
     intern_const_ref(
         db,
         &value.map_or(LiteralConstRef::Unknown, LiteralConstRef::UInt),

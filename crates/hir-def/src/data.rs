@@ -2,7 +2,7 @@
 
 pub mod adt;
 
-use base_db::CrateId;
+use base_db::Crate;
 use hir_expand::{
     name::Name, AstId, ExpandResult, HirFileId, InFile, MacroCallId, MacroCallKind, MacroDefKind,
 };
@@ -21,7 +21,7 @@ use crate::{
         attr_resolution::ResolvedAttr,
         diagnostics::{DefDiagnostic, DefDiagnostics},
         proc_macro::{parse_macro_name_and_helper_attrs, ProcMacroKind},
-        DefMap, MacroSubNs,
+        DefMap, LocalDefMap, MacroSubNs,
     },
     path::ImportAlias,
     type_ref::{TraitRef, TypeBound, TypeRefId, TypesMap},
@@ -56,8 +56,7 @@ impl FunctionData {
             item_tree[func.visibility].clone()
         };
 
-        let crate_graph = db.crate_graph();
-        let cfg_options = &crate_graph[krate].cfg_options;
+        let cfg_options = krate.cfg_options(db);
         let attr_owner = |idx| {
             item_tree::AttrOwner::Param(loc.id.value, Idx::from_raw(RawIdx::from(idx as u32)))
         };
@@ -66,7 +65,7 @@ impl FunctionData {
         if flags.contains(FnFlags::HAS_SELF_PARAM) {
             // If there's a self param in the syntax, but it is cfg'd out, remove the flag.
             let is_cfgd_out =
-                !item_tree.attrs(db, krate, attr_owner(0usize)).is_cfg_enabled(cfg_options);
+                !item_tree.attrs(db, krate, attr_owner(0usize)).is_cfg_enabled(&cfg_options);
             if is_cfgd_out {
                 cov_mark::hit!(cfgd_out_self_param);
                 flags.remove(FnFlags::HAS_SELF_PARAM);
@@ -74,7 +73,7 @@ impl FunctionData {
         }
         if flags.contains(FnFlags::IS_VARARGS) {
             if let Some((_, param)) = func.params.iter().enumerate().rev().find(|&(idx, _)| {
-                item_tree.attrs(db, krate, attr_owner(idx)).is_cfg_enabled(cfg_options)
+                item_tree.attrs(db, krate, attr_owner(idx)).is_cfg_enabled(&cfg_options)
             }) {
                 if param.type_ref.is_some() {
                     flags.remove(FnFlags::IS_VARARGS);
@@ -94,8 +93,9 @@ impl FunctionData {
             .map(Box::new);
         let rustc_allow_incoherent_impl = attrs.by_key(&sym::rustc_allow_incoherent_impl).exists();
         if flags.contains(FnFlags::HAS_UNSAFE_KW)
-            && !crate_graph[krate].edition.at_least_2024()
             && attrs.by_key(&sym::rustc_deprecated_safe_2024).exists()
+            // This should come last to prevent needless salsa dependencies.
+            && !krate.data(db).edition.at_least_2024()
         {
             flags.remove(FnFlags::HAS_UNSAFE_KW);
         }
@@ -107,7 +107,7 @@ impl FunctionData {
                 .iter()
                 .enumerate()
                 .filter(|&(idx, _)| {
-                    item_tree.attrs(db, krate, attr_owner(idx)).is_cfg_enabled(cfg_options)
+                    item_tree.attrs(db, krate, attr_owner(idx)).is_cfg_enabled(&cfg_options)
                 })
                 .filter_map(|(_, param)| param.type_ref)
                 .collect(),
@@ -496,7 +496,7 @@ pub struct ExternCrateDeclData {
     pub name: Name,
     pub alias: Option<ImportAlias>,
     pub visibility: RawVisibility,
-    pub crate_id: Option<CrateId>,
+    pub crate_id: Option<Crate>,
 }
 
 impl ExternCrateDeclData {
@@ -513,7 +513,7 @@ impl ExternCrateDeclData {
         let crate_id = if name == sym::self_.clone() {
             Some(krate)
         } else {
-            db.crate_graph()[krate].dependencies.iter().find_map(|dep| {
+            krate.data(db).dependencies.iter().find_map(|dep| {
                 if dep.name.symbol() == name.symbol() {
                     Some(dep.crate_id)
                 } else {
@@ -604,6 +604,7 @@ struct AssocItemCollector<'a> {
     db: &'a dyn DefDatabase,
     module_id: ModuleId,
     def_map: Arc<DefMap>,
+    local_def_map: Arc<LocalDefMap>,
     diagnostics: Vec<DefDiagnostic>,
     container: ItemContainerId,
     expander: Expander,
@@ -619,10 +620,12 @@ impl<'a> AssocItemCollector<'a> {
         file_id: HirFileId,
         container: ItemContainerId,
     ) -> Self {
+        let (def_map, local_def_map) = module_id.local_def_map(db);
         Self {
             db,
             module_id,
-            def_map: module_id.def_map(db),
+            def_map,
+            local_def_map,
             container,
             expander: Expander::new(db, file_id, module_id),
             items: Vec::new(),
@@ -668,6 +671,7 @@ impl<'a> AssocItemCollector<'a> {
                 let ast_id_with_path = AstIdWithPath { path: attr.path.clone(), ast_id };
 
                 match self.def_map.resolve_attr_macro(
+                    &self.local_def_map,
                     self.db,
                     self.module_id.local_id,
                     ast_id_with_path,
@@ -751,6 +755,7 @@ impl<'a> AssocItemCollector<'a> {
                 let resolver = |path: &_| {
                     self.def_map
                         .resolve_path(
+                            &self.local_def_map,
                             self.db,
                             module,
                             path,

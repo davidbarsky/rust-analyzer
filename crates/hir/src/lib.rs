@@ -39,7 +39,7 @@ use std::{
 };
 
 use arrayvec::ArrayVec;
-use base_db::{CrateDisplayName, CrateId, CrateOrigin};
+use base_db::{CrateDisplayName, CrateOrigin, LangCrateOrigin};
 use either::Either;
 use hir_def::{
     body::BodyDiagnostic,
@@ -175,7 +175,7 @@ use {
 /// root module.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Crate {
-    pub(crate) id: CrateId,
+    pub(crate) id: base_db::Crate,
 }
 
 #[derive(Debug)]
@@ -186,7 +186,7 @@ pub struct CrateDependency {
 
 impl Crate {
     pub fn origin(self, db: &dyn HirDatabase) -> CrateOrigin {
-        db.crate_graph()[self.id].origin.clone()
+        self.id.data(db).origin.clone()
     }
 
     pub fn is_builtin(self, db: &dyn HirDatabase) -> bool {
@@ -194,7 +194,8 @@ impl Crate {
     }
 
     pub fn dependencies(self, db: &dyn HirDatabase) -> Vec<CrateDependency> {
-        db.crate_graph()[self.id]
+        self.id
+            .data(db)
             .dependencies
             .iter()
             .map(|dep| {
@@ -206,12 +207,11 @@ impl Crate {
     }
 
     pub fn reverse_dependencies(self, db: &dyn HirDatabase) -> Vec<Crate> {
-        let crate_graph = db.crate_graph();
-        crate_graph
+        let all_crates = db.all_crates();
+        all_crates
             .iter()
-            .filter(|&krate| {
-                crate_graph[krate].dependencies.iter().any(|it| it.crate_id == self.id)
-            })
+            .copied()
+            .filter(|&krate| krate.data(db).dependencies.iter().any(|it| it.crate_id == self.id))
             .map(|id| Crate { id })
             .collect()
     }
@@ -220,7 +220,7 @@ impl Crate {
         self,
         db: &dyn HirDatabase,
     ) -> impl Iterator<Item = Crate> {
-        db.crate_graph().transitive_rev_deps(self.id).map(|id| Crate { id })
+        db.transitive_rev_deps(self.id).into_iter().map(|id| Crate { id })
     }
 
     pub fn root_module(self) -> Module {
@@ -233,19 +233,19 @@ impl Crate {
     }
 
     pub fn root_file(self, db: &dyn HirDatabase) -> FileId {
-        db.crate_graph()[self.id].root_file_id
+        self.id.data(db).root_file_id
     }
 
     pub fn edition(self, db: &dyn HirDatabase) -> Edition {
-        db.crate_graph()[self.id].edition
+        self.id.data(db).edition
     }
 
     pub fn version(self, db: &dyn HirDatabase) -> Option<String> {
-        db.crate_graph()[self.id].version.clone()
+        self.id.extra_data(db).version.clone()
     }
 
     pub fn display_name(self, db: &dyn HirDatabase) -> Option<CrateDisplayName> {
-        db.crate_graph()[self.id].display_name.clone()
+        self.id.extra_data(db).display_name.clone()
     }
 
     pub fn query_external_importables(
@@ -263,7 +263,7 @@ impl Crate {
     }
 
     pub fn all(db: &dyn HirDatabase) -> Vec<Crate> {
-        db.crate_graph().iter().map(|id| Crate { id }).collect()
+        db.all_crates().iter().map(|&id| Crate { id }).collect()
     }
 
     /// Try to get the root URL of the documentation of a crate.
@@ -275,12 +275,12 @@ impl Crate {
     }
 
     pub fn cfg(&self, db: &dyn HirDatabase) -> Arc<CfgOptions> {
-        db.crate_graph()[self.id].cfg_options.clone()
+        Arc::clone(self.id.cfg_options(db))
     }
 
-    pub fn potential_cfg(&self, db: &dyn HirDatabase) -> Arc<CfgOptions> {
-        let data = &db.crate_graph()[self.id];
-        data.potential_cfg_options.clone().unwrap_or_else(|| data.cfg_options.clone())
+    pub fn potential_cfg<'db>(&self, db: &'db dyn HirDatabase) -> &'db CfgOptions {
+        let data = &self.id.extra_data(db);
+        data.potential_cfg_options.as_ref().unwrap_or_else(|| self.id.cfg_options(db))
     }
 }
 
@@ -583,7 +583,7 @@ impl Module {
         style_lints: bool,
     ) {
         let _p = tracing::info_span!("diagnostics", name = ?self.name(db)).entered();
-        let edition = db.crate_graph()[self.id.krate()].edition;
+        let edition = self.id.krate().data(db).edition;
         let def_map = self.id.def_map(db.upcast());
         for diag in def_map.diagnostics() {
             if diag.in_module != self.id.local_id {
@@ -952,7 +952,7 @@ fn emit_macro_def_diagnostics(db: &dyn HirDatabase, acc: &mut Vec<AnyDiagnostic>
                 return;
             };
             let krate = HasModule::krate(&m.id, db.upcast());
-            let edition = db.crate_graph()[krate].edition;
+            let edition = krate.data(db).edition;
             emit_def_diagnostic_(
                 db,
                 acc,
@@ -2407,7 +2407,7 @@ impl Function {
         span_formatter: impl Fn(FileId, TextRange) -> String,
     ) -> Result<String, ConstEvalError> {
         let krate = HasModule::krate(&self.id, db.upcast());
-        let edition = db.crate_graph()[krate].edition;
+        let edition = krate.data(db).edition;
         let body = db.monomorphized_mir_body(
             self.id.into(),
             Substitution::empty(Interner),
@@ -2907,7 +2907,13 @@ impl BuiltinType {
     }
 
     pub fn ty(self, db: &dyn HirDatabase) -> Type {
-        Type::new_for_crate(db.crate_graph().iter().next().unwrap(), TyBuilder::builtin(self.inner))
+        let all_crates = db.all_crates();
+        let core = all_crates
+            .iter()
+            .copied()
+            .find(|krate| krate.data(db).origin == CrateOrigin::Lang(LangCrateOrigin::Core))
+            .unwrap_or_else(|| all_crates[0]);
+        Type::new_for_crate(core, TyBuilder::builtin(self.inner))
     }
 
     pub fn name(self) -> Name {
@@ -3841,7 +3847,7 @@ impl DeriveHelper {
 // FIXME: Wrong name? This is could also be a registered attribute
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct BuiltinAttr {
-    krate: Option<CrateId>,
+    krate: Option<base_db::Crate>,
     idx: u32,
 }
 
@@ -3887,7 +3893,7 @@ impl BuiltinAttr {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ToolModule {
-    krate: CrateId,
+    krate: base_db::Crate,
     idx: u32,
 }
 
@@ -4600,7 +4606,7 @@ impl Type {
         Type { env: environment, ty }
     }
 
-    pub(crate) fn new_for_crate(krate: CrateId, ty: Ty) -> Type {
+    pub(crate) fn new_for_crate(krate: base_db::Crate, ty: Ty) -> Type {
         Type { env: TraitEnvironment::empty(krate), ty }
     }
 
@@ -4660,7 +4666,7 @@ impl Type {
         Type { env: ty.env, ty: TyBuilder::slice(ty.ty) }
     }
 
-    pub fn new_tuple(krate: CrateId, tys: &[Type]) -> Type {
+    pub fn new_tuple(krate: base_db::Crate, tys: &[Type]) -> Type {
         let tys = tys.iter().map(|it| it.ty.clone());
         Type { env: TraitEnvironment::empty(krate), ty: TyBuilder::tuple_with(tys) }
     }
@@ -4688,7 +4694,7 @@ impl Type {
     pub fn contains_reference(&self, db: &dyn HirDatabase) -> bool {
         return go(db, self.env.krate, &self.ty);
 
-        fn go(db: &dyn HirDatabase, krate: CrateId, ty: &Ty) -> bool {
+        fn go(db: &dyn HirDatabase, krate: base_db::Crate, ty: &Ty) -> bool {
             match ty.kind(Interner) {
                 // Reference itself
                 TyKind::Ref(_, _, _) => true,
@@ -5959,7 +5965,7 @@ impl HasContainer for Module {
         let def_map = self.id.def_map(db.upcast());
         match def_map[self.id.local_id].parent {
             Some(parent_id) => ItemContainer::Module(Module { id: def_map.module_id(parent_id) }),
-            None => ItemContainer::Crate(def_map.krate()),
+            None => ItemContainer::Crate(def_map.krate().into()),
         }
     }
 }
@@ -6033,7 +6039,7 @@ pub enum ItemContainer {
     Impl(Impl),
     Module(Module),
     ExternBlock(),
-    Crate(CrateId),
+    Crate(Crate),
 }
 
 /// Subset of `ide_db::Definition` that doc links can resolve to.

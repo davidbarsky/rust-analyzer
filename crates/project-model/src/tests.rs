@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use base_db::{CrateGraph, ProcMacroPaths};
+use base_db::{CrateGraphBuilder, ProcMacroPaths};
 use cargo_metadata::Metadata;
 use cfg::{CfgAtom, CfgDiff};
 use expect_test::{expect_file, ExpectFile};
@@ -17,14 +17,14 @@ use crate::{
     WorkspaceBuildScripts,
 };
 
-fn load_cargo(file: &str) -> (CrateGraph, ProcMacroPaths) {
+fn load_cargo(file: &str) -> (CrateGraphBuilder, ProcMacroPaths) {
     load_cargo_with_overrides(file, CfgOverrides::default())
 }
 
 fn load_cargo_with_overrides(
     file: &str,
     cfg_overrides: CfgOverrides,
-) -> (CrateGraph, ProcMacroPaths) {
+) -> (CrateGraphBuilder, ProcMacroPaths) {
     let meta: Metadata = get_test_json_file(file);
     let manifest_path =
         ManifestPath::try_from(AbsPathBuf::try_from(meta.workspace_root.clone()).unwrap()).unwrap();
@@ -46,7 +46,7 @@ fn load_cargo_with_overrides(
     to_crate_graph(project_workspace)
 }
 
-fn load_rust_project(file: &str) -> (CrateGraph, ProcMacroPaths) {
+fn load_rust_project(file: &str) -> (CrateGraphBuilder, ProcMacroPaths) {
     let data = get_test_json_file(file);
     let project = rooted_project_json(data);
     let sysroot = get_fake_sysroot();
@@ -127,7 +127,7 @@ fn rooted_project_json(data: ProjectJsonData) -> ProjectJson {
     ProjectJson::new(None, base, data)
 }
 
-fn to_crate_graph(project_workspace: ProjectWorkspace) -> (CrateGraph, ProcMacroPaths) {
+fn to_crate_graph(project_workspace: ProjectWorkspace) -> (CrateGraphBuilder, ProcMacroPaths) {
     project_workspace.to_crate_graph(
         &mut {
             let mut counter = 0;
@@ -140,7 +140,7 @@ fn to_crate_graph(project_workspace: ProjectWorkspace) -> (CrateGraph, ProcMacro
     )
 }
 
-fn check_crate_graph(crate_graph: CrateGraph, expect: ExpectFile) {
+fn check_crate_graph(crate_graph: CrateGraphBuilder, expect: ExpectFile) {
     let mut crate_graph = format!("{crate_graph:#?}");
 
     replace_root(&mut crate_graph, false);
@@ -218,7 +218,7 @@ fn rust_project_is_proc_macro_has_proc_macro_dep() {
     let crate_data = &crate_graph[crate_id];
     // Assert that the project crate with `is_proc_macro` has a dependency
     // on the proc_macro sysroot crate.
-    crate_data.dependencies.iter().find(|&dep| dep.name.deref() == "proc_macro").unwrap();
+    crate_data.basic.dependencies.iter().find(|&dep| dep.name.deref() == "proc_macro").unwrap();
 }
 
 #[test]
