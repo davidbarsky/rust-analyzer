@@ -182,7 +182,7 @@ pub fn marks_rev(
         })
 }
 
-pub(crate) fn dump_syntax_contexts(db: &dyn ExpandDatabase) -> String {
+pub(crate) fn dump_syntax_contexts(_db: &dyn ExpandDatabase) -> String {
     todo!()
     // use base_db::ra_salsa::debug::DebugQueryTable;
 
