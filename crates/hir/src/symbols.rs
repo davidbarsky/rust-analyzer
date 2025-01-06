@@ -97,7 +97,7 @@ impl<'a> SymbolCollector<'a> {
     }
 
     fn do_work(&mut self, work: SymbolCollectorWork) {
-        // self.db.unwind_if_cancelled();
+        self.db.unwind_if_revision_cancelled();
 
         let parent_name = work.parent.and_then(|id| self.def_with_body_id_name(id));
         self.with_container_name(parent_name, |s| s.collect_from_module(work.module_id));
