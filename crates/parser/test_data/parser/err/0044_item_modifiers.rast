@@ -26,15 +26,14 @@ SOURCE_FILE
     ERROR
       FN_KW "fn"
   WHITESPACE " "
-  ERROR
+  MACRO_CALL
     PATH
       PATH_SEGMENT
         NAME_REF
           IDENT "bar"
-  ERROR
-    L_PAREN "("
-  ERROR
-    R_PAREN ")"
+    TOKEN_TREE
+      L_PAREN "("
+      R_PAREN ")"
   WHITESPACE " "
   ERROR
     L_CURLY "{"
@@ -44,7 +43,6 @@ error 6: expected fn, trait or impl
 error 38: expected a name
 error 40: missing type for `const` or `static`
 error 40: expected SEMICOLON
-error 44: expected an item
-error 44: expected an item
-error 45: expected an item
+error 44: expected BANG
+error 46: expected SEMICOLON
 error 47: expected an item

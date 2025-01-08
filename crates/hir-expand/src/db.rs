@@ -163,13 +163,13 @@ fn syntax_context(db: &dyn ExpandDatabase, file: HirFileId) -> SyntaxContextId {
 /// This expands the given macro call, but with different arguments. This is
 /// used for completion, where we want to see what 'would happen' if we insert a
 /// token. The `token_to_map` mapped down into the expansion, with the mapped
-/// token(s) returned with their priority.
+/// token returned.
 pub fn expand_speculative(
     db: &dyn ExpandDatabase,
     actual_macro_call: MacroCallId,
     speculative_args: &SyntaxNode,
     token_to_map: SyntaxToken,
-) -> Option<(SyntaxNode, Vec<(SyntaxToken, u8)>)> {
+) -> Option<(SyntaxNode, SyntaxToken)> {
     let loc = db.lookup_intern_macro_call(actual_macro_call);
     let (_, _, span) = db.macro_arg_considering_derives(actual_macro_call, &loc.kind);
 
@@ -322,24 +322,17 @@ pub fn expand_speculative(
         token_tree_to_syntax_node(&speculative_expansion.value, expand_to, loc.def.edition);
 
     let syntax_node = node.syntax_node();
-    let token = rev_tmap
+    let (token, _) = rev_tmap
         .ranges_with_span(span_map.span_for_range(token_to_map.text_range()))
-        .filter_map(|(range, ctx)| {
-            syntax_node
-                .covering_element(range)
-                .into_token()
-                .zip(Some(ctx))
-        })
-        .map(|(t, ctx)| {
+        .filter_map(|(range, ctx)| syntax_node.covering_element(range).into_token().zip(Some(ctx)))
+        .min_by_key(|(t, ctx)| {
             // prefer tokens of the same kind and text, as well as non opaque marked ones
             // Note the inversion of the score here, as we want to prefer the first token in case
             // of all tokens having the same score
-            let ranking = ctx.is_opaque(db) as u8
+            ctx.is_opaque(db) as u8
                 + 2 * (t.kind() != token_to_map.kind()) as u8
-                + 4 * ((t.text() != token_to_map.text()) as u8);
-            (t, ranking)
-        })
-        .collect();
+                + 4 * ((t.text() != token_to_map.text()) as u8)
+        })?;
     Some((node.syntax_node(), token))
 }
 

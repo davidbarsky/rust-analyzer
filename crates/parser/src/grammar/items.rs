@@ -72,19 +72,8 @@ pub(super) fn item_or_macro(p: &mut Parser<'_>, stop_on_r_curly: bool, is_in_ext
     // macro_rules! ()
     // macro_rules! []
     if paths::is_use_path_start(p) {
-        paths::use_path(p);
-        // Do not create a MACRO_CALL node here if this isn't a macro call, this causes problems with completion.
-
-        // test_err path_item_without_excl
-        // foo
-        if p.at(T![!]) {
-            macro_call(p, m);
-            return;
-        } else {
-            m.complete(p, ERROR);
-            p.error("expected an item");
-            return;
-        }
+        macro_call(p, m);
+        return;
     }
 
     m.abandon(p);
@@ -421,7 +410,8 @@ fn fn_(p: &mut Parser<'_>, m: Marker) {
 }
 
 fn macro_call(p: &mut Parser<'_>, m: Marker) {
-    assert!(p.at(T![!]));
+    assert!(paths::is_use_path_start(p));
+    paths::use_path(p);
     match macro_call_after_excl(p) {
         BlockLike::Block => (),
         BlockLike::NotBlock => {
