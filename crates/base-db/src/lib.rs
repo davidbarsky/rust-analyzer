@@ -298,6 +298,23 @@ pub trait SourceDatabase: salsa::Database {
     fn crates_map(&self) -> Arc<CratesMap>;
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct QueryCounts {
+    query_counts: Arc<DashMap<String, usize, BuildHasherDefault<FxHasher>>>,
+}
+
+impl QueryCounts {
+    pub fn increment(&self, query_name: String) {
+        *self.query_counts.entry(query_name).or_default() += 1;
+    }
+
+    pub fn all(&self) -> Vec<(String, usize)> {
+        let mut sorted = self.query_counts.iter().collect::<Vec<_>>();
+        sorted.sort_by(|a, b| b.value().cmp(&a.value()));
+        sorted.iter().map(|pair| (pair.key().clone(), *pair.value())).collect()
+    }
+}
+
 /// Crate related data shared by the whole workspace.
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct CrateWorkspaceData {

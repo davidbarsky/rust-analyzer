@@ -349,6 +349,9 @@ impl flags::AnalysisStats {
         }
         report_metric("total memory", total_span.memory.allocated.megabytes() as u64, "MB");
 
+        let query_counts = db.all();
+        eprintln!("{:<20} {:#?}", "Query Counts:", query_counts);
+
         if verbosity.is_verbose() {
             print_memory_usage(host, vfs);
         }

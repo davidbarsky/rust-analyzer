@@ -46,12 +46,12 @@ pub mod syntax_helpers {
 }
 
 pub use hir::ChangeWithProcMacros;
-use salsa::Durability;
+use salsa::{AsDynDatabase, Durability};
 
 use std::{fmt, mem::ManuallyDrop};
 
 use base_db::{
-    CrateGraphBuilder, CratesMap, FileSourceRootInput, FileText, Files, RootQueryDb,
+    CrateGraphBuilder, CratesMap, FileSourceRootInput, FileText, Files, QueryCounts, RootQueryDb,
     SourceDatabase, SourceRoot, SourceRootId, SourceRootInput, Upcast, query_group,
 };
 use hir::{
@@ -85,13 +85,27 @@ pub struct RootDatabase {
     storage: ManuallyDrop<salsa::Storage<Self>>,
     files: Arc<Files>,
     crates_map: Arc<CratesMap>,
+    query_counts: QueryCounts,
 }
 
 impl std::panic::RefUnwindSafe for RootDatabase {}
 
 #[salsa::db]
 impl salsa::Database for RootDatabase {
-    fn salsa_event(&self, _event: &dyn Fn() -> salsa::Event) {}
+    fn salsa_event(&self, event: &dyn Fn() -> salsa::Event) {
+        let event = event();
+        match event.kind {
+            salsa::EventKind::DidValidateMemoizedValue { database_key }
+            | salsa::EventKind::WillExecute { database_key } => {
+                let ingredient =
+                    self.as_dyn_database().ingredient_debug_name(database_key.ingredient_index());
+                let ingredient = ingredient.to_string();
+
+                self.query_counts.increment(ingredient);
+            }
+            _ => (),
+        }
+    }
 }
 
 impl Drop for RootDatabase {
@@ -106,6 +120,7 @@ impl Clone for RootDatabase {
             storage: self.storage.clone(),
             files: self.files.clone(),
             crates_map: self.crates_map.clone(),
+            query_counts: self.query_counts.clone(),
         }
     }
 }
@@ -216,6 +231,7 @@ impl RootDatabase {
             storage: ManuallyDrop::new(salsa::Storage::default()),
             files: Default::default(),
             crates_map: Default::default(),
+            query_counts: Default::default(),
         };
         // This needs to be here otherwise `CrateGraphBuilder` will panic.
         db.set_all_crates(Arc::new(Box::new([])));
@@ -273,7 +289,12 @@ impl RootDatabase {
             storage: self.storage.clone(),
             files: self.files.clone(),
             crates_map: self.crates_map.clone(),
+            query_counts: self.query_counts.clone(),
         }
+    }
+
+    pub fn all(&self) -> Vec<(String, usize)> {
+        self.query_counts.all()
     }
 }
 
