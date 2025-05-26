@@ -1097,7 +1097,10 @@ pub(crate) fn handle_completion(
         context.and_then(|ctx| ctx.trigger_character).and_then(|s| s.chars().next());
 
     let source_root = snap.analysis.source_root_id(position.file_id)?;
-    let completion_config = &snap.config.completion(Some(source_root));
+    let completion_config = &mut snap.config.completion(Some(source_root)).clone();
+    completion_config.fields_to_resolve.resolve_detail = false;
+    completion_config.fields_to_resolve.resolve_documentation = false;
+
     // FIXME: We should fix up the position when retrying the cancelled request instead
     position.offset = position.offset.min(line_index.index.len());
     let items = match snap.analysis.completions(
@@ -1108,6 +1111,9 @@ pub(crate) fn handle_completion(
         None => return Ok(None),
         Some(items) => items,
     };
+
+    completion_config.fields_to_resolve.resolve_detail = true;
+    completion_config.fields_to_resolve.resolve_documentation = true;
 
     let items = to_proto::completion_items(
         &snap.config,
