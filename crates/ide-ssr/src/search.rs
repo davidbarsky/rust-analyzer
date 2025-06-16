@@ -6,7 +6,7 @@ use crate::{
 };
 use hir::FileRange;
 use ide_db::{
-    EditionedFileId, FileId, FxHashSet,
+    EditionedFileId, File, FxHashSet,
     defs::Definition,
     search::{SearchScope, UsageSearchResult},
 };
@@ -152,7 +152,7 @@ impl<'db> MatchFinder<'db> {
         })
     }
 
-    fn search_files_do(&self, mut callback: impl FnMut(FileId)) {
+    fn search_files_do(&self, mut callback: impl FnMut(File)) {
         if self.restrict_ranges.is_empty() {
             // Unrestricted search.
             use ide_db::base_db::SourceDatabase;

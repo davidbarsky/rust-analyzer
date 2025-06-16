@@ -29,7 +29,7 @@ use crate::{
 use base_db::AnchoredPathBuf;
 use either::Either;
 use hir::{FieldSource, FileRange, InFile, ModuleSource, Name, Semantics, sym};
-use span::{Edition, FileId, SyntaxContext};
+use span::{Edition, File, SyntaxContext};
 use stdx::{TupleExt, never};
 use syntax::{
     AstNode, SyntaxKind, T, TextRange,
@@ -558,7 +558,7 @@ fn source_edit_from_def(
     def: Definition,
     new_name: &Name,
     source_change: &mut SourceChange,
-) -> Result<(FileId, TextEdit)> {
+) -> Result<(File, TextEdit)> {
     let mut edit = TextEdit::builder();
     if let Definition::Local(local) = def {
         let mut file_id = None;

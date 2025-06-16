@@ -19,12 +19,9 @@
 
 use hir::{PathResolution, Semantics};
 use ide_db::{
-    FileId, RootDatabase,
-    defs::{Definition, NameClass, NameRefClass},
-    search::{ReferenceCategory, SearchScope, UsageSearchResult},
+    defs::{Definition, NameClass, NameRefClass}, search::{ReferenceCategory, SearchScope, UsageSearchResult}, File, FxHashMap, RootDatabase
 };
 use itertools::Itertools;
-use nohash_hasher::IntMap;
 use span::Edition;
 use syntax::{
     AstNode,
@@ -49,7 +46,7 @@ pub struct ReferenceSearchResult {
     /// The map key is the file ID, and the value is a vector of (range, category) pairs.
     /// - range: The text range of the reference in the file
     /// - category: Metadata about how the reference is used (read/write/etc)
-    pub references: IntMap<FileId, Vec<(TextRange, ReferenceCategory)>>,
+    pub references: FxHashMap<File, Vec<(TextRange, ReferenceCategory)>>,
 }
 
 /// Information about the declaration site of a searched item.
@@ -121,7 +118,7 @@ pub(crate) fn find_all_refs(
                 retain_adt_literal_usages(&mut usages, def, sema);
             }
 
-            let mut references: IntMap<FileId, Vec<(TextRange, ReferenceCategory)>> = usages
+            let mut references: FxHashMap<File, Vec<(TextRange, ReferenceCategory)>> = usages
                 .into_iter()
                 .map(|(file_id, refs)| {
                     (

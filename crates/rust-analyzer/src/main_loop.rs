@@ -14,7 +14,7 @@ use lsp_server::{Connection, Notification, Request};
 use lsp_types::{TextDocumentIdentifier, notification::Notification as _};
 use stdx::thread::ThreadIntent;
 use tracing::{Level, error, span};
-use vfs::{AbsPathBuf, FileId, loader::LoadingProgress};
+use vfs::{AbsPathBuf, File, loader::LoadingProgress};
 
 use crate::{
     config::Config,
@@ -92,13 +92,13 @@ impl fmt::Display for Event {
 #[derive(Debug)]
 pub(crate) enum QueuedTask {
     CheckIfIndexed(lsp_types::Url),
-    CheckProcMacroSources(Vec<FileId>),
+    CheckProcMacroSources(Vec<File>),
 }
 
 #[derive(Debug)]
 pub(crate) enum DiagnosticsTaskKind {
-    Syntax(DiagnosticsGeneration, Vec<(FileId, Vec<lsp_types::Diagnostic>)>),
-    Semantic(DiagnosticsGeneration, Vec<(FileId, Vec<lsp_types::Diagnostic>)>),
+    Syntax(DiagnosticsGeneration, Vec<(File, Vec<lsp_types::Diagnostic>)>),
+    Semantic(DiagnosticsGeneration, Vec<(File, Vec<lsp_types::Diagnostic>)>),
 }
 
 #[derive(Debug)]

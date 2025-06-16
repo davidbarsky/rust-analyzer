@@ -4,7 +4,7 @@
 // crates\hir-def\src\macro_expansion_tests\mod.rs to this
 use expect_test::expect;
 use span::{
-    Edition, EditionedFileId, FileId, ROOT_ERASED_FILE_AST_ID, Span, SpanAnchor, SyntaxContext,
+    Edition, EditionedFileId, File, ROOT_ERASED_FILE_AST_ID, Span, SpanAnchor, SyntaxContext,
 };
 use stdx::format_to;
 use tt::{TextRange, TextSize};
@@ -25,7 +25,7 @@ fn check_(
     let decl_tt = &syntax_bridge::parse_to_token_tree(
         def_edition,
         SpanAnchor {
-            file_id: EditionedFileId::new(FileId::from_raw(0), def_edition),
+            file_id: EditionedFileId::from_raw_const(1),
             ast_id: ROOT_ERASED_FILE_AST_ID,
         },
         SyntaxContext::root(Edition::CURRENT),
@@ -38,7 +38,7 @@ fn check_(
         DeclarativeMacro::parse_macro_rules(decl_tt, |_| def_edition)
     };
     let call_anchor = SpanAnchor {
-        file_id: EditionedFileId::new(FileId::from_raw(1), call_edition),
+        file_id: EditionedFileId::from_raw_const(1),
         ast_id: ROOT_ERASED_FILE_AST_ID,
     };
     let arg_tt = syntax_bridge::parse_to_token_tree(

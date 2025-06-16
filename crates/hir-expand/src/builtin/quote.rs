@@ -234,10 +234,7 @@ mod tests {
     const DUMMY: tt::Span = tt::Span {
         range: TextRange::empty(TextSize::new(0)),
         anchor: SpanAnchor {
-            file_id: span::EditionedFileId::new(
-                span::FileId::from_raw(0xe4e4e),
-                span::Edition::CURRENT,
-            ),
+            file_id: span::EditionedFileId::from_raw_const(0xe4e4e),
             ast_id: ROOT_ERASED_FILE_AST_ID,
         },
         ctx: SyntaxContext::root(Edition::CURRENT),

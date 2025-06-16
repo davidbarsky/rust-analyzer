@@ -3,7 +3,7 @@ use std::iter;
 use either::Either;
 use hir::{HasSource, ModuleSource};
 use ide_db::{
-    FileId, FxHashMap, FxHashSet,
+    File, FxHashMap, FxHashSet,
     assists::AssistId,
     defs::{Definition, NameClass, NameRefClass},
     search::{FileReference, SearchScope},
@@ -231,10 +231,10 @@ impl Module {
     fn get_usages_and_record_fields(
         &self,
         ctx: &AssistContext<'_>,
-    ) -> (FxHashMap<FileId, Vec<(TextRange, String)>>, Vec<SyntaxNode>, FxHashMap<TextSize, ast::Use>)
+    ) -> (FxHashMap<File, Vec<(TextRange, String)>>, Vec<SyntaxNode>, FxHashMap<TextSize, ast::Use>)
     {
         let mut adt_fields = Vec::new();
-        let mut refs: FxHashMap<FileId, Vec<(TextRange, String)>> = FxHashMap::default();
+        let mut refs: FxHashMap<File, Vec<(TextRange, String)>> = FxHashMap::default();
         // use `TextSize` as key to avoid repeated use stmts
         let mut use_stmts_to_be_inserted = FxHashMap::default();
 
@@ -320,7 +320,7 @@ impl Module {
         &self,
         ctx: &AssistContext<'_>,
         node_def: Definition,
-        refs_in_files: &mut FxHashMap<FileId, Vec<(TextRange, String)>>,
+        refs_in_files: &mut FxHashMap<File, Vec<(TextRange, String)>>,
         use_stmts_to_be_inserted: &mut FxHashMap<TextSize, ast::Use>,
     ) {
         let mod_name = self.name;
@@ -664,7 +664,7 @@ fn check_def_in_mod_and_out_sel(
     ctx: &AssistContext<'_>,
     curr_parent_module: &Option<ast::Module>,
     selection_range: TextRange,
-    curr_file_id: FileId,
+    curr_file_id: File,
 ) -> (bool, bool) {
     macro_rules! check_item {
         ($x:ident) => {

@@ -33,7 +33,7 @@ use intern::{Interned, Symbol, sym};
 use itertools::Itertools;
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::{SmallVec, smallvec};
-use span::{Edition, FileId, SyntaxContext};
+use span::{Edition, File, SyntaxContext};
 use stdx::TupleExt;
 use syntax::{
     AstNode, AstToken, Direction, SyntaxKind, SyntaxNode, SyntaxNodePtr, SyntaxToken, TextRange,
@@ -284,11 +284,11 @@ impl<DB: HirDatabase + ?Sized> Semantics<'_, DB> {
         self.imp.resolve_variant(record_lit).map(VariantDef::from)
     }
 
-    pub fn file_to_module_def(&self, file: impl Into<FileId>) -> Option<Module> {
+    pub fn file_to_module_def(&self, file: impl Into<File>) -> Option<Module> {
         self.imp.file_to_module_defs(file.into()).next()
     }
 
-    pub fn file_to_module_defs(&self, file: impl Into<FileId>) -> impl Iterator<Item = Module> {
+    pub fn file_to_module_defs(&self, file: impl Into<File>) -> impl Iterator<Item = Module> {
         self.imp.file_to_module_defs(file.into())
     }
 
@@ -373,14 +373,14 @@ impl<'db> SemanticsImpl<'db> {
     }
 
     /// If not crate is found for the file, try to return the last crate in topological order.
-    pub fn first_crate(&self, file: FileId) -> Option<Crate> {
+    pub fn first_crate(&self, file: File) -> Option<Crate> {
         match self.file_to_module_defs(file).next() {
             Some(module) => Some(module.krate()),
             None => self.db.all_crates().last().copied().map(Into::into),
         }
     }
 
-    pub fn attach_first_edition(&self, file: FileId) -> Option<EditionedFileId> {
+    pub fn attach_first_edition(&self, file: File) -> Option<EditionedFileId> {
         Some(EditionedFileId::new(
             self.db,
             file,
@@ -388,7 +388,7 @@ impl<'db> SemanticsImpl<'db> {
         ))
     }
 
-    pub fn parse_guess_edition(&self, file_id: FileId) -> ast::SourceFile {
+    pub fn parse_guess_edition(&self, file_id: File) -> ast::SourceFile {
         let file_id = self
             .attach_first_edition(file_id)
             .unwrap_or_else(|| EditionedFileId::new(self.db, file_id, Edition::CURRENT));
@@ -1465,7 +1465,7 @@ impl<'db> SemanticsImpl<'db> {
     pub fn diagnostics_display_range(
         &self,
         src: InFile<SyntaxNodePtr>,
-    ) -> FileRangeWrapper<FileId> {
+    ) -> FileRangeWrapper<File> {
         let root = self.parse_or_expand(src.file_id);
         let node = src.map(|it| it.to_node(&root));
         let FileRange { file_id, range } = node.as_ref().original_file_range_rooted(self.db);
@@ -1873,7 +1873,7 @@ impl<'db> SemanticsImpl<'db> {
         T::to_def(self, src)
     }
 
-    fn file_to_module_defs(&self, file: FileId) -> impl Iterator<Item = Module> {
+    fn file_to_module_defs(&self, file: File) -> impl Iterator<Item = Module> {
         self.with_ctx(|ctx| ctx.file_to_def(file).to_owned()).into_iter().map(Module::from)
     }
 

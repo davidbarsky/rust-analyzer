@@ -4,7 +4,7 @@ use std::env;
 use std::time::Instant;
 
 use ide::{
-    Analysis, AnalysisHost, FileId, FileRange, MonikerKind, MonikerResult, PackageInformation,
+    Analysis, AnalysisHost, File, FileRange, MonikerKind, MonikerResult, PackageInformation,
     RootDatabase, StaticIndex, StaticIndexedFile, TokenId, TokenStaticData,
     VendoredLibrariesConfig,
 };
@@ -27,7 +27,7 @@ struct LsifManager<'a, 'w> {
     count: i32,
     token_map: FxHashMap<TokenId, Id>,
     range_map: FxHashMap<FileRange, Id>,
-    file_map: FxHashMap<FileId, Id>,
+    file_map: FxHashMap<File, Id>,
     package_map: FxHashMap<PackageInformation, Id>,
     analysis: &'a Analysis,
     db: &'a RootDatabase,
@@ -137,7 +137,7 @@ impl LsifManager<'_, '_> {
         range_id
     }
 
-    fn get_file_id(&mut self, id: FileId) -> Id {
+    fn get_file_id(&mut self, id: File) -> Id {
         if let Some(it) = self.file_map.get(&id) {
             return *it;
         }

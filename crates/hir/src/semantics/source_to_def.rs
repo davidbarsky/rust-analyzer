@@ -104,7 +104,7 @@ use hir_expand::{
 };
 use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
-use span::FileId;
+use span::File;
 use stdx::impl_from;
 use syntax::{
     AstNode, AstPtr, SyntaxNode,
@@ -118,7 +118,7 @@ use crate::{InFile, InlineAsmOperand, db::HirDatabase, semantics::child_by_sourc
 pub(super) struct SourceToDefCache {
     pub(super) dynmap_cache: FxHashMap<(ChildContainer, HirFileId), DynMap>,
     expansion_info_cache: FxHashMap<MacroCallId, ExpansionInfo>,
-    pub(super) file_to_def_cache: FxHashMap<FileId, SmallVec<[ModuleId; 1]>>,
+    pub(super) file_to_def_cache: FxHashMap<File, SmallVec<[ModuleId; 1]>>,
     pub(super) included_file_cache: FxHashMap<EditionedFileId, Option<MacroCallId>>,
     /// Rootnode to HirFileId cache
     pub(super) root_to_file_cache: FxHashMap<SyntaxNode, HirFileId>,
@@ -174,7 +174,7 @@ pub(super) struct SourceToDefCtx<'db, 'cache> {
 }
 
 impl SourceToDefCtx<'_, '_> {
-    pub(super) fn file_to_def(&mut self, file: FileId) -> &SmallVec<[ModuleId; 1]> {
+    pub(super) fn file_to_def(&mut self, file: File) -> &SmallVec<[ModuleId; 1]> {
         let _p = tracing::info_span!("SourceToDefCtx::file_to_def").entered();
         self.cache.file_to_def_cache.entry(file).or_insert_with(|| {
             let mut mods = SmallVec::new();

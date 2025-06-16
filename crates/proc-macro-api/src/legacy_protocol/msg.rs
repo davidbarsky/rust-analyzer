@@ -209,13 +209,15 @@ mod tests {
         Delimiter, DelimiterKind, Ident, Leaf, Literal, Punct, Spacing, TopSubtree,
         TopSubtreeBuilder,
     };
+    use vfs::VfsPath;
 
     use super::*;
 
     fn fixture_token_tree() -> TopSubtree<Span> {
+        let db = salsa::DatabaseImpl::new();
         let anchor = SpanAnchor {
             file_id: span::EditionedFileId::new(
-                span::FileId::from_raw(0xe4e4e),
+                span::File::new(&db, VfsPath::new_virtual_path("path/one.rs".to_owned())),
                 span::Edition::CURRENT,
             ),
             ast_id: ROOT_ERASED_FILE_AST_ID,

@@ -3,7 +3,7 @@ use hir::{
     TypeInfo,
 };
 use ide_db::{
-    FileId, FxHashMap, FxHashSet, RootDatabase, SnippetCap,
+    File, FxHashMap, FxHashSet, RootDatabase, SnippetCap,
     assists::ExprFillDefaultMode,
     defs::{Definition, NameRefClass},
     famous_defs::FamousDefs,
@@ -87,7 +87,7 @@ struct TargetInfo {
     target_module: Option<Module>,
     adt_info: Option<AdtInfo>,
     target: GeneratedFunctionTarget,
-    file: FileId,
+    file: File,
 }
 
 impl TargetInfo {
@@ -95,7 +95,7 @@ impl TargetInfo {
         target_module: Option<Module>,
         adt_info: Option<AdtInfo>,
         target: GeneratedFunctionTarget,
-        file: FileId,
+        file: File,
     ) -> Self {
         Self { target_module, adt_info, target, file }
     }
@@ -169,7 +169,7 @@ fn add_func_to_accumulator(
     ctx: &AssistContext<'_>,
     text_range: TextRange,
     function_builder: FunctionBuilder,
-    file: FileId,
+    file: File,
     adt_info: Option<AdtInfo>,
     label: String,
 ) -> Option<()> {
@@ -204,7 +204,7 @@ fn get_adt_source(
     ctx: &AssistContext<'_>,
     adt: &hir::Adt,
     fn_name: &str,
-) -> Option<(Option<ast::Impl>, FileId)> {
+) -> Option<(Option<ast::Impl>, File)> {
     let range = adt.source(ctx.sema.db)?.syntax().original_file_range_rooted(ctx.sema.db);
 
     let file = ctx.sema.parse(range.file_id);
@@ -509,7 +509,7 @@ fn get_fn_target(
     ctx: &AssistContext<'_>,
     target_module: Option<Module>,
     call: CallExpr,
-) -> Option<(GeneratedFunctionTarget, FileId)> {
+) -> Option<(GeneratedFunctionTarget, File)> {
     let mut file = ctx.vfs_file_id();
     let target = match target_module {
         Some(target_module) => {
@@ -1173,7 +1173,7 @@ fn next_space_for_fn_after_call_site(expr: ast::CallableExpr) -> Option<Generate
 fn next_space_for_fn_in_module(
     db: &dyn hir::db::HirDatabase,
     target_module: hir::Module,
-) -> (FileId, GeneratedFunctionTarget) {
+) -> (File, GeneratedFunctionTarget) {
     let module_source = target_module.definition_source(db);
     let file = module_source.file_id.original_file(db);
     let assist_item = match &module_source.value {

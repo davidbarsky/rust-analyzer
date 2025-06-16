@@ -21,6 +21,8 @@ crossbeam-channel.workspace = true
 
 paths.workspace = true
 stdx.workspace = true
+salsa.workspace = true
+salsa-macros.workspace = true
 
 [lints]
 workspace = true

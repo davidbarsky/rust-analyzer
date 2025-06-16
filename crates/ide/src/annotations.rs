@@ -1,6 +1,6 @@
 use hir::{HasSource, InFile, InRealFile, Semantics};
 use ide_db::{
-    FileId, FilePosition, FileRange, FxIndexSet, RootDatabase, defs::Definition,
+    File, FilePosition, FileRange, FxIndexSet, RootDatabase, defs::Definition,
     helpers::visit_file_defs,
 };
 use itertools::Itertools;
@@ -54,7 +54,7 @@ pub enum AnnotationLocation {
 pub(crate) fn annotations(
     db: &RootDatabase,
     config: &AnnotationConfig,
-    file_id: FileId,
+    file_id: File,
 ) -> Vec<Annotation> {
     let mut annotations = FxIndexSet::default();
 
@@ -147,7 +147,7 @@ pub(crate) fn annotations(
         fn name_range<T: HasName>(
             db: &RootDatabase,
             node: InFile<T>,
-            source_file_id: FileId,
+            source_file_id: File,
         ) -> Option<(TextRange, Option<TextRange>)> {
             if let Some(name) = node.value.name().map(|name| name.syntax().text_range()) {
                 // if we have a name, try mapping that out of the macro expansion as we can put the

@@ -19,9 +19,7 @@ use proc_macro_api::{MacroDylib, ProcMacroClient};
 use project_model::{CargoConfig, PackageRoot, ProjectManifest, ProjectWorkspace};
 use span::Span;
 use vfs::{
-    AbsPath, AbsPathBuf, VfsPath,
-    file_set::FileSetConfig,
-    loader::{Handle, LoadingProgress},
+    file_set::FileSetConfig, loader::{Handle, LoadingProgress}, AbsPath, AbsPathBuf, File, VfsPath
 };
 
 #[derive(Debug)]
@@ -61,11 +59,15 @@ pub fn load_workspace_at(
         workspace.set_build_scripts(build_scripts)
     }
 
-    load_workspace(workspace, &cargo_config.extra_env, load_config)
+    let lru_cap = std::env::var("RA_LRU_CAP").ok().and_then(|it| it.parse::<u16>().ok());
+    let db = RootDatabase::new(lru_cap);
+
+    load_workspace(workspace, db, &cargo_config.extra_env, load_config)
 }
 
 pub fn load_workspace(
     ws: ProjectWorkspace,
+    db: RootDatabase,
     extra_env: &FxHashMap<String, Option<String>>,
     load_config: &LoadCargoConfig,
 ) -> anyhow::Result<(RootDatabase, vfs::Vfs, Option<ProcMacroClient>)> {
@@ -102,10 +104,19 @@ pub fn load_workspace(
         &mut |path: &AbsPath| {
             let contents = loader.load_sync(path);
             let path = vfs::VfsPath::from(path.to_path_buf());
-            vfs.set_file_contents(path.clone(), contents);
-            vfs.file_id(&path).and_then(|(file_id, excluded)| {
-                (excluded == vfs::FileExcluded::No).then_some(file_id)
-            })
+            let file = File::new(&db, path);
+            vfs.set_file_contents(file, contents);
+
+            if let Some(excluded) = vfs.file_exists(&file) {
+                if excluded == vfs::FileExcluded::No {
+                    return Some(file)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+
         },
         extra_env,
     );
@@ -139,12 +150,14 @@ pub fn load_workspace(
         version: 0,
     });
 
-    let db = load_crate_graph(
+
+    load_crate_graph(
         crate_graph,
         proc_macros,
         project_folders.source_root_config,
         &mut vfs,
         &receiver,
+        db.clone()
     );
 
     if load_config.prefill_caches {
@@ -314,9 +327,9 @@ pub struct SourceRootConfig {
 }
 
 impl SourceRootConfig {
-    pub fn partition(&self, vfs: &vfs::Vfs) -> Vec<SourceRoot> {
+    pub fn partition(&self, db: &RootDatabase, vfs: &vfs::Vfs) -> Vec<SourceRoot> {
         self.fsc
-            .partition(vfs)
+            .partition(db, vfs)
             .into_iter()
             .enumerate()
             .map(|(idx, file_set)| {
@@ -423,10 +436,10 @@ fn load_crate_graph(
     source_root_config: SourceRootConfig,
     vfs: &mut vfs::Vfs,
     receiver: &Receiver<vfs::loader::Message>,
-) -> RootDatabase {
-    let lru_cap = std::env::var("RA_LRU_CAP").ok().and_then(|it| it.parse::<u16>().ok());
-    let mut db = RootDatabase::new(lru_cap);
+    db: RootDatabase,
+) {
     let mut analysis_change = ChangeWithProcMacros::default();
+    let mut db = db;
 
     db.enable_proc_attr_macros();
 
@@ -442,7 +455,7 @@ fn load_crate_graph(
                 let _p =
                     tracing::info_span!("load_cargo::load_crate_craph/LoadedChanged").entered();
                 for (path, contents) in files {
-                    vfs.set_file_contents(path.into(), contents);
+                    vfs.set_file_contents(File::new(&db, path.into()), contents);
                 }
             }
         }
@@ -451,18 +464,17 @@ fn load_crate_graph(
     for (_, file) in changes {
         if let vfs::Change::Create(v, _) | vfs::Change::Modify(v, _) = file.change {
             if let Ok(text) = String::from_utf8(v) {
-                analysis_change.change_file(file.file_id, Some(text))
+                analysis_change.change_file(file.file, Some(text))
             }
         }
     }
-    let source_roots = source_root_config.partition(vfs);
+    let source_roots = source_root_config.partition(&db, vfs);
     analysis_change.set_roots(source_roots);
 
     analysis_change.set_crate_graph(crate_graph);
     analysis_change.set_proc_macros(proc_macros);
 
     db.apply_change(analysis_change);
-    db
 }
 
 fn expander_to_proc_macro(

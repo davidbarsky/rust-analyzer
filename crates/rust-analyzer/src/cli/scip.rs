@@ -12,7 +12,7 @@ use load_cargo::{LoadCargoConfig, ProcMacroServerChoice, load_workspace_at};
 use rustc_hash::{FxHashMap, FxHashSet};
 use scip::types::{self as scip_types, SymbolInformation};
 use tracing::error;
-use vfs::FileId;
+use vfs::File;
 
 use crate::{
     cli::flags,
@@ -93,7 +93,7 @@ impl flags::Scip {
         // All TokenIds where the SymbolInformation has been written to the document.
         let mut token_ids_emitted: FxHashSet<TokenId> = FxHashSet::default();
         // All FileIds emitted as documents.
-        let mut file_ids_emitted: FxHashSet<FileId> = FxHashSet::default();
+        let mut file_ids_emitted: FxHashSet<File> = FxHashSet::default();
 
         // All non-local symbols encountered, for detecting duplicate symbol errors.
         let mut nonlocal_symbols_emitted: FxHashSet<String> = FxHashSet::default();
@@ -332,12 +332,12 @@ fn compute_symbol_info(
 fn get_relative_filepath(
     vfs: &vfs::Vfs,
     rootpath: &vfs::AbsPathBuf,
-    file_id: ide::FileId,
+    file_id: ide::File,
 ) -> Option<String> {
     Some(vfs.file_path(file_id).as_path()?.strip_prefix(rootpath)?.as_str().to_owned())
 }
 
-fn get_line_index(db: &RootDatabase, file_id: FileId) -> LineIndex {
+fn get_line_index(db: &RootDatabase, file_id: File) -> LineIndex {
     LineIndex {
         index: db.line_index(file_id),
         encoding: PositionEncoding::Utf8,

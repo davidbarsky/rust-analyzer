@@ -1,7 +1,7 @@
 use crate::assist_context::{AssistContext, Assists};
 use hir::{HasVisibility, HirDisplay, Module};
 use ide_db::{
-    FileId,
+    File,
     assists::AssistId,
     defs::{Definition, NameRefClass},
 };
@@ -116,7 +116,7 @@ fn target_data_for_generate_constant(
     ctx: &AssistContext<'_>,
     current_module: Module,
     constant_module: Module,
-) -> Option<(TextSize, IndentLevel, Option<FileId>, String)> {
+) -> Option<(TextSize, IndentLevel, Option<File>, String)> {
     if current_module == constant_module {
         // insert in current file
         return None;

@@ -8,7 +8,7 @@ use base_db::{
 };
 use hir_expand::{InFile, files::FilePosition};
 use salsa::{AsDynDatabase, Durability};
-use span::FileId;
+use span::File;
 use syntax::{AstNode, algo, ast};
 use triomphe::Arc;
 

@@ -90,7 +90,7 @@ use hir::{
     Crate, DisplayTarget, InFile, Semantics, db::ExpandDatabase, diagnostics::AnyDiagnostic,
 };
 use ide_db::{
-    EditionedFileId, FileId, FileRange, FxHashMap, FxHashSet, RootDatabase, Severity, SnippetCap,
+    EditionedFileId, File, FileRange, FxHashMap, FxHashSet, RootDatabase, Severity, SnippetCap,
     assists::{Assist, AssistId, AssistResolveStrategy, ExprFillDefaultMode},
     base_db::{ReleaseChannel, RootQueryDb as _},
     generated::lints::{CLIPPY_LINT_GROUPS, DEFAULT_LINT_GROUPS, DEFAULT_LINTS, Lint, LintGroup},
@@ -306,7 +306,7 @@ impl DiagnosticsContext<'_> {
 pub fn syntax_diagnostics(
     db: &RootDatabase,
     config: &DiagnosticsConfig,
-    file_id: FileId,
+    file_id: File,
 ) -> Vec<Diagnostic> {
     let _p = tracing::info_span!("syntax_diagnostics").entered();
 
@@ -342,7 +342,7 @@ pub fn semantic_diagnostics(
     db: &RootDatabase,
     config: &DiagnosticsConfig,
     resolve: &AssistResolveStrategy,
-    file_id: FileId,
+    file_id: File,
 ) -> Vec<Diagnostic> {
     let _p = tracing::info_span!("semantic_diagnostics").entered();
     let sema = Semantics::new(db);
@@ -535,7 +535,7 @@ pub fn full_diagnostics(
     db: &RootDatabase,
     config: &DiagnosticsConfig,
     resolve: &AssistResolveStrategy,
-    file_id: FileId,
+    file_id: File,
 ) -> Vec<Diagnostic> {
     let mut res = syntax_diagnostics(db, config, file_id);
     let sema = semantic_diagnostics(db, config, resolve, file_id);

@@ -851,7 +851,7 @@ mod tests {
     use triomphe::Arc;
 
     use hir_expand::span_map::{RealSpanMap, SpanMap};
-    use span::FileId;
+    use span::File;
     use syntax::{AstNode, TextRange, ast};
     use syntax_bridge::{DocCommentDesugarMode, syntax_node_to_token_tree};
 

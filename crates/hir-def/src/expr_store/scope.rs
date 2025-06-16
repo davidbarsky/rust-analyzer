@@ -319,7 +319,7 @@ fn compute_expr_scopes(
 mod tests {
     use base_db::RootQueryDb;
     use hir_expand::{InFile, name::AsName};
-    use span::FileId;
+    use span::File;
     use syntax::{AstNode, algo::find_node_at_offset, ast};
     use test_fixture::WithFixture;
     use test_utils::{assert_eq_text, extract_offset};

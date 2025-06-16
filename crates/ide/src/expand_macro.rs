@@ -1,7 +1,7 @@
 use hir::db::ExpandDatabase;
 use hir::{ExpandResult, InFile, InRealFile, Semantics};
 use ide_db::{
-    FileId, RootDatabase, base_db::Crate, helpers::pick_best_token,
+    File, RootDatabase, base_db::Crate, helpers::pick_best_token,
     syntax_helpers::prettify_macro_expansion,
 };
 use span::{SpanMap, SyntaxContext, TextRange, TextSize};
@@ -203,7 +203,7 @@ fn expand(
 fn format(
     db: &RootDatabase,
     kind: SyntaxKind,
-    file_id: FileId,
+    file_id: File,
     expanded: SyntaxNode,
     span_map: &SpanMap<SyntaxContext>,
     krate: Crate,
@@ -229,7 +229,7 @@ fn _format(
 fn _format(
     db: &RootDatabase,
     kind: SyntaxKind,
-    file_id: FileId,
+    file_id: File,
     expansion: &str,
 ) -> Option<String> {
     use ide_db::base_db::RootQueryDb;

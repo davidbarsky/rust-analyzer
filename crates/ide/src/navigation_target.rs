@@ -9,7 +9,7 @@ use hir::{
     LocalSource, ModuleSource, db::ExpandDatabase, symbols::FileSymbol,
 };
 use ide_db::{
-    FileId, FileRange, RootDatabase, SymbolKind,
+    File, FileRange, RootDatabase, SymbolKind,
     defs::Definition,
     documentation::{Documentation, HasDocs},
 };
@@ -28,7 +28,7 @@ use syntax::{
 /// code, like a function or a struct, but this is not strictly required.
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct NavigationTarget {
-    pub file_id: FileId,
+    pub file_id: File,
     /// Range which encompasses the whole element.
     ///
     /// Should include body, doc comments, attributes, etc.
@@ -162,7 +162,7 @@ impl NavigationTarget {
     }
 
     pub(crate) fn from_syntax(
-        file_id: FileId,
+        file_id: File,
         name: SmolStr,
         focus_range: Option<TextRange>,
         full_range: TextRange,

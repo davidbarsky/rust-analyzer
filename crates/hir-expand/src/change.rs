@@ -1,7 +1,7 @@
 //! Defines a unit of change that can applied to the database to get the next
 //! state. Changes are transactional.
 use base_db::{CrateGraphBuilder, FileChange, SourceRoot, salsa::Durability};
-use span::FileId;
+use span::File;
 use triomphe::Arc;
 
 use crate::{db::ExpandDatabase, proc_macro::ProcMacrosBuilder};
@@ -25,7 +25,7 @@ impl ChangeWithProcMacros {
         }
     }
 
-    pub fn change_file(&mut self, file_id: FileId, new_text: Option<String>) {
+    pub fn change_file(&mut self, file_id: File, new_text: Option<String>) {
         self.source_change.change_file(file_id, new_text)
     }
 

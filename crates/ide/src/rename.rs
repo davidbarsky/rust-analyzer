@@ -6,7 +6,7 @@
 
 use hir::{AsAssocItem, InFile, Name, Semantics, sym};
 use ide_db::{
-    FileId, FileRange, RootDatabase,
+    File, FileRange, RootDatabase,
     defs::{Definition, NameClass, NameRefClass},
     rename::{IdentifierKind, RenameDefinition, bail, format_err, source_edit_from_references},
     source_change::SourceChangeBuilder,
@@ -159,7 +159,7 @@ pub(crate) fn rename(
 /// Called by the client when it is about to rename a file.
 pub(crate) fn will_rename_file(
     db: &RootDatabase,
-    file_id: FileId,
+    file_id: File,
     new_name_stem: &str,
 ) -> Option<SourceChange> {
     let sema = Semantics::new(db);

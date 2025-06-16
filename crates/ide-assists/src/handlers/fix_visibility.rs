@@ -1,5 +1,5 @@
 use hir::{HasSource, HasVisibility, ModuleDef, PathResolution, ScopeDef, db::HirDatabase};
-use ide_db::FileId;
+use ide_db::File;
 use syntax::{
     AstNode, TextRange,
     ast::{self, HasVisibility as _, edit_in_place::HasVisibilityEdit, make},
@@ -90,11 +90,11 @@ fn add_vis_to_referenced_module_def(acc: &mut Assists, ctx: &AssistContext<'_>) 
 fn target_data_for_def(
     db: &dyn HirDatabase,
     def: hir::ModuleDef,
-) -> Option<(ast::AnyHasVisibility, TextRange, FileId, Option<hir::Name>)> {
+) -> Option<(ast::AnyHasVisibility, TextRange, File, Option<hir::Name>)> {
     fn offset_target_and_file_id<S, Ast>(
         db: &dyn HirDatabase,
         x: S,
-    ) -> Option<(ast::AnyHasVisibility, TextRange, FileId)>
+    ) -> Option<(ast::AnyHasVisibility, TextRange, File)>
     where
         S: HasSource<Ast = Ast>,
         Ast: AstNode + ast::HasVisibility,

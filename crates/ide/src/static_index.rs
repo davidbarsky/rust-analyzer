@@ -4,7 +4,7 @@
 use arrayvec::ArrayVec;
 use hir::{Crate, Module, Semantics, db::HirDatabase};
 use ide_db::{
-    FileId, FileRange, FxHashMap, FxHashSet, RootDatabase,
+    File, FileRange, FxHashMap, FxHashSet, RootDatabase,
     base_db::{RootQueryDb, SourceDatabase, VfsPath},
     defs::{Definition, IdentClass},
     documentation::Documentation,
@@ -86,7 +86,7 @@ impl TokenStore {
 
 #[derive(Debug)]
 pub struct StaticIndexedFile {
-    pub file_id: FileId,
+    pub file_id: File,
     pub folds: Vec<Fold>,
     pub inlay_hints: Vec<InlayHint>,
     pub tokens: Vec<(TextRange, TokenId)>,
@@ -148,7 +148,7 @@ pub enum VendoredLibrariesConfig<'a> {
 }
 
 impl StaticIndex<'_> {
-    fn add_file(&mut self, file_id: FileId) {
+    fn add_file(&mut self, file_id: File) {
         let current_crate = crates_for(self.db, file_id).pop().map(Into::into);
         let folds = self.analysis.folding_ranges(file_id).unwrap();
         let inlay_hints = self

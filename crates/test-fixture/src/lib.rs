@@ -21,7 +21,7 @@ use hir_expand::{
 use intern::{Symbol, sym};
 use paths::AbsPathBuf;
 use rustc_hash::FxHashMap;
-use span::{Edition, FileId, Span};
+use span::{Edition, File, Span};
 use stdx::itertools::Itertools;
 use test_utils::{
     CURSOR_MARKER, ESCAPED_CURSOR_MARKER, Fixture, FixtureWithProjectMeta, RangeOrOffset,
@@ -149,7 +149,7 @@ impl ChangeFixture {
         let mut crate_graph = CrateGraphBuilder::default();
         let mut crates = FxHashMap::default();
         let mut crate_deps = Vec::new();
-        let mut default_crate_root: Option<FileId> = None;
+        let mut default_crate_root: Option<File> = None;
         let mut default_edition = Edition::CURRENT;
         let mut default_cfg = CfgOptions::default();
         let mut default_env = Env::from_iter([(
@@ -159,7 +159,7 @@ impl ChangeFixture {
 
         let mut file_set = FileSet::default();
         let mut current_source_root_kind = SourceRootKind::Local;
-        let mut file_id = FileId::from_raw(0);
+        let mut file_id = File::from_raw(0);
         let mut roots = Vec::new();
 
         let mut file_position = None;
@@ -246,7 +246,7 @@ impl ChangeFixture {
             let path = VfsPath::new_virtual_path(meta.path);
             file_set.insert(file_id, path);
             files.push(EditionedFileId::new(db, file_id, meta.edition));
-            file_id = FileId::from_raw(file_id.index() + 1);
+            file_id = File::from_raw(file_id.index() + 1);
         }
 
         if crates.is_empty() {
@@ -281,7 +281,7 @@ impl ChangeFixture {
 
         if let Some(mini_core) = mini_core {
             let core_file = file_id;
-            file_id = FileId::from_raw(file_id.index() + 1);
+            file_id = File::from_raw(file_id.index() + 1);
 
             let mut fs = FileSet::default();
             fs.insert(core_file, VfsPath::new_virtual_path("/sysroot/core/lib.rs".to_owned()));

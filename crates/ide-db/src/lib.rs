@@ -67,14 +67,14 @@ pub use ::line_index;
 
 /// `base_db` is normally also needed in places where `ide_db` is used, so this re-export is for convenience.
 pub use base_db;
-pub use span::{self, FileId};
+pub use span::{self, File};
 
 pub type FxIndexSet<T> = indexmap::IndexSet<T, std::hash::BuildHasherDefault<rustc_hash::FxHasher>>;
 pub type FxIndexMap<K, V> =
     indexmap::IndexMap<K, V, std::hash::BuildHasherDefault<rustc_hash::FxHasher>>;
 
-pub type FilePosition = FilePositionWrapper<FileId>;
-pub type FileRange = FileRangeWrapper<FileId>;
+pub type FilePosition = FilePositionWrapper<File>;
+pub type FileRange = FileRangeWrapper<File>;
 
 #[salsa_macros::db]
 pub struct RootDatabase {
@@ -118,18 +118,18 @@ impl fmt::Debug for RootDatabase {
 
 #[salsa_macros::db]
 impl SourceDatabase for RootDatabase {
-    fn file_text(&self, file_id: vfs::FileId) -> FileText {
+    fn file_text(&self, file_id: vfs::File) -> FileText {
         self.files.file_text(file_id)
     }
 
-    fn set_file_text(&mut self, file_id: vfs::FileId, text: &str) {
+    fn set_file_text(&mut self, file_id: vfs::File, text: &str) {
         let files = Arc::clone(&self.files);
         files.set_file_text(self, file_id, text);
     }
 
     fn set_file_text_with_durability(
         &mut self,
-        file_id: vfs::FileId,
+        file_id: vfs::File,
         text: &str,
         durability: Durability,
     ) {
@@ -152,13 +152,13 @@ impl SourceDatabase for RootDatabase {
         files.set_source_root_with_durability(self, source_root_id, source_root, durability);
     }
 
-    fn file_source_root(&self, id: vfs::FileId) -> FileSourceRootInput {
+    fn file_source_root(&self, id: vfs::File) -> FileSourceRootInput {
         self.files.file_source_root(id)
     }
 
     fn set_file_source_root_with_durability(
         &mut self,
-        id: vfs::FileId,
+        id: vfs::File,
         source_root_id: SourceRootId,
         durability: Durability,
     ) {
@@ -239,10 +239,10 @@ impl RootDatabase {
 #[query_group::query_group]
 pub trait LineIndexDatabase: base_db::RootQueryDb {
     #[salsa::invoke_interned(line_index)]
-    fn line_index(&self, file_id: FileId) -> Arc<LineIndex>;
+    fn line_index(&self, file_id: File) -> Arc<LineIndex>;
 }
 
-fn line_index(db: &dyn LineIndexDatabase, file_id: FileId) -> Arc<LineIndex> {
+fn line_index(db: &dyn LineIndexDatabase, file_id: File) -> Arc<LineIndex> {
     let text = db.file_text(file_id).text(db);
     Arc::new(LineIndex::new(&text))
 }

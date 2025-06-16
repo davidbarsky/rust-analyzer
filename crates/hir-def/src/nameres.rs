@@ -69,7 +69,7 @@ use intern::Symbol;
 use itertools::Itertools;
 use la_arena::Arena;
 use rustc_hash::{FxHashMap, FxHashSet};
-use span::{Edition, FileAstId, FileId, ROOT_ERASED_FILE_AST_ID};
+use span::{Edition, FileAstId, File, ROOT_ERASED_FILE_AST_ID};
 use stdx::format_to;
 use syntax::{AstNode, SmolStr, SyntaxNode, ToSmolStr, ast};
 use triomphe::Arc;
@@ -509,7 +509,7 @@ impl DefMap {
     pub fn modules_for_file<'a>(
         &'a self,
         db: &'a dyn DefDatabase,
-        file_id: FileId,
+        file_id: File,
     ) -> impl Iterator<Item = LocalModuleId> + 'a {
         self.modules
             .iter()

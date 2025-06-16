@@ -11,7 +11,7 @@ use std::{
 
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use hir::ChangeWithProcMacros;
-use ide::{Analysis, AnalysisHost, Cancellable, FileId, SourceRootId};
+use ide::{Analysis, AnalysisHost, Cancellable, File, SourceRootId};
 use ide_db::base_db::{Crate, ProcMacroPaths, SourceDatabase};
 use itertools::Itertools;
 use load_cargo::SourceRootConfig;
@@ -128,7 +128,7 @@ pub(crate) struct GlobalState {
 
     // VFS
     pub(crate) loader: Handle<Box<dyn vfs::loader::Handle>, Receiver<vfs::loader::Message>>,
-    pub(crate) vfs: Arc<RwLock<(vfs::Vfs, FxHashMap<FileId, LineEndings>)>>,
+    pub(crate) vfs: Arc<RwLock<(vfs::Vfs, FxHashMap<File, LineEndings>)>>,
     pub(crate) vfs_config_version: u32,
     pub(crate) vfs_progress_config_version: u32,
     pub(crate) vfs_done: bool,
@@ -192,7 +192,7 @@ pub(crate) struct GlobalStateSnapshot {
     pub(crate) check_fixes: CheckFixes,
     mem_docs: MemDocs,
     pub(crate) semantic_tokens_cache: Arc<Mutex<FxHashMap<Url, SemanticTokens>>>,
-    vfs: Arc<RwLock<(vfs::Vfs, FxHashMap<FileId, LineEndings>)>>,
+    vfs: Arc<RwLock<(vfs::Vfs, FxHashMap<File, LineEndings>)>>,
     pub(crate) workspaces: Arc<Vec<ProjectWorkspace>>,
     // used to signal semantic highlighting to fall back to syntax based highlighting until
     // proc-macros have been loaded
@@ -308,9 +308,9 @@ impl GlobalState {
         let _p = span!(Level::INFO, "GlobalState::process_changes").entered();
         // We cannot directly resolve a change in a ratoml file to a format
         // that can be used by the config module because config talks
-        // in `SourceRootId`s instead of `FileId`s and `FileId` -> `SourceRootId`
+        // in `SourceRootId`s instead of `File`s and `FileId` -> `SourceRootId`
         // mapping is not ready until `AnalysisHost::apply_changes` has been called.
-        let mut modified_ratoml_files: FxHashMap<FileId, (ChangeKind, vfs::VfsPath)> =
+        let mut modified_ratoml_files: FxHashMap<File, (ChangeKind, vfs::VfsPath)> =
             FxHashMap::default();
 
         let mut change = ChangeWithProcMacros::default();
@@ -717,27 +717,27 @@ impl GlobalStateSnapshot {
     }
 
     /// Returns `None` if the file was excluded.
-    pub(crate) fn url_to_file_id(&self, url: &Url) -> anyhow::Result<Option<FileId>> {
+    pub(crate) fn url_to_file_id(&self, url: &Url) -> anyhow::Result<Option<File>> {
         url_to_file_id(&self.vfs_read(), url)
     }
 
-    pub(crate) fn file_id_to_url(&self, id: FileId) -> Url {
+    pub(crate) fn file_id_to_url(&self, id: File) -> Url {
         file_id_to_url(&self.vfs_read(), id)
     }
 
     /// Returns `None` if the file was excluded.
-    pub(crate) fn vfs_path_to_file_id(&self, vfs_path: &VfsPath) -> anyhow::Result<Option<FileId>> {
+    pub(crate) fn vfs_path_to_file_id(&self, vfs_path: &VfsPath) -> anyhow::Result<Option<File>> {
         vfs_path_to_file_id(&self.vfs_read(), vfs_path)
     }
 
-    pub(crate) fn file_line_index(&self, file_id: FileId) -> Cancellable<LineIndex> {
+    pub(crate) fn file_line_index(&self, file_id: File) -> Cancellable<LineIndex> {
         let endings = self.vfs.read().1[&file_id];
         let index = self.analysis.file_line_index(file_id)?;
         let res = LineIndex { index, endings, encoding: self.config.caps().negotiated_encoding() };
         Ok(res)
     }
 
-    pub(crate) fn file_version(&self, file_id: FileId) -> Option<i32> {
+    pub(crate) fn file_version(&self, file_id: File) -> Option<i32> {
         Some(self.mem_docs.get(self.vfs_read().file_path(file_id))?.version)
     }
 
@@ -754,7 +754,7 @@ impl GlobalStateSnapshot {
         url_from_abs_path(path)
     }
 
-    pub(crate) fn file_id_to_file_path(&self, file_id: FileId) -> vfs::VfsPath {
+    pub(crate) fn file_id_to_file_path(&self, file_id: File) -> vfs::VfsPath {
         self.vfs_read().file_path(file_id).clone()
     }
 
@@ -807,19 +807,19 @@ impl GlobalStateSnapshot {
         None
     }
 
-    pub(crate) fn file_exists(&self, file_id: FileId) -> bool {
+    pub(crate) fn file_exists(&self, file_id: File) -> bool {
         self.vfs.read().0.exists(file_id)
     }
 }
 
-pub(crate) fn file_id_to_url(vfs: &vfs::Vfs, id: FileId) -> Url {
+pub(crate) fn file_id_to_url(vfs: &vfs::Vfs, id: File) -> Url {
     let path = vfs.file_path(id);
     let path = path.as_path().unwrap();
     url_from_abs_path(path)
 }
 
 /// Returns `None` if the file was excluded.
-pub(crate) fn url_to_file_id(vfs: &vfs::Vfs, url: &Url) -> anyhow::Result<Option<FileId>> {
+pub(crate) fn url_to_file_id(vfs: &vfs::Vfs, url: &Url) -> anyhow::Result<Option<File>> {
     let path = from_proto::vfs_path(url)?;
     vfs_path_to_file_id(vfs, &path)
 }
@@ -828,7 +828,7 @@ pub(crate) fn url_to_file_id(vfs: &vfs::Vfs, url: &Url) -> anyhow::Result<Option
 pub(crate) fn vfs_path_to_file_id(
     vfs: &vfs::Vfs,
     vfs_path: &VfsPath,
-) -> anyhow::Result<Option<FileId>> {
+) -> anyhow::Result<Option<File>> {
     let (file_id, excluded) =
         vfs.file_id(vfs_path).ok_or_else(|| anyhow::format_err!("file not found: {vfs_path}"))?;
     match excluded {

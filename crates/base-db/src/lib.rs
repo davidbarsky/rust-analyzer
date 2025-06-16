@@ -26,7 +26,7 @@ pub use semver::{BuildMetadata, Prerelease, Version, VersionReq};
 use span::Edition;
 use syntax::{Parse, SyntaxError, ast};
 use triomphe::Arc;
-pub use vfs::{AnchoredPath, AnchoredPathBuf, FileId, VfsPath, file_set::FileSet};
+pub use vfs::{AnchoredPath, AnchoredPathBuf, File, VfsPath, file_set::FileSet};
 
 pub type FxIndexSet<T> = indexmap::IndexSet<T, rustc_hash::FxBuildHasher>;
 
@@ -56,22 +56,22 @@ pub const DEFAULT_BORROWCK_LRU_CAP: u16 = 2024;
 
 #[derive(Debug, Default)]
 pub struct Files {
-    files: Arc<DashMap<vfs::FileId, FileText, BuildHasherDefault<FxHasher>>>,
+    files: Arc<DashMap<vfs::File, FileText, BuildHasherDefault<FxHasher>>>,
     source_roots: Arc<DashMap<SourceRootId, SourceRootInput, BuildHasherDefault<FxHasher>>>,
-    file_source_roots: Arc<DashMap<vfs::FileId, FileSourceRootInput, BuildHasherDefault<FxHasher>>>,
+    file_source_roots: Arc<DashMap<vfs::File, FileSourceRootInput, BuildHasherDefault<FxHasher>>>,
 }
 
 impl Files {
-    pub fn file_text(&self, file_id: vfs::FileId) -> FileText {
+    pub fn file_text(&self, file_id: vfs::File) -> FileText {
         match self.files.get(&file_id) {
             Some(text) => *text,
             None => {
-                panic!("Unable to fetch file text for `vfs::FileId`: {file_id:?}; this is a bug")
+                panic!("Unable to fetch file text for `vfs::File`: {file_id:?}; this is a bug")
             }
         }
     }
 
-    pub fn set_file_text(&self, db: &mut dyn SourceDatabase, file_id: vfs::FileId, text: &str) {
+    pub fn set_file_text(&self, db: &mut dyn SourceDatabase, file_id: vfs::File, text: &str) {
         match self.files.entry(file_id) {
             Entry::Occupied(mut occupied) => {
                 occupied.get_mut().set_text(db).to(Arc::from(text));
@@ -86,7 +86,7 @@ impl Files {
     pub fn set_file_text_with_durability(
         &self,
         db: &mut dyn SourceDatabase,
-        file_id: vfs::FileId,
+        file_id: vfs::File,
         text: &str,
         durability: Durability,
     ) {
@@ -133,11 +133,11 @@ impl Files {
         };
     }
 
-    pub fn file_source_root(&self, id: vfs::FileId) -> FileSourceRootInput {
+    pub fn file_source_root(&self, id: vfs::File) -> FileSourceRootInput {
         let file_source_root = match self.file_source_roots.get(&id) {
             Some(file_source_root) => file_source_root,
             None => panic!(
-                "Unable to get `FileSourceRootInput` with `vfs::FileId` ({id:?}); this is a bug",
+                "Unable to get `FileSourceRootInput` with `vfs::File` ({id:?}); this is a bug",
             ),
         };
         *file_source_root
@@ -146,7 +146,7 @@ impl Files {
     pub fn set_file_source_root_with_durability(
         &self,
         db: &mut dyn SourceDatabase,
-        id: vfs::FileId,
+        id: vfs::File,
         source_root_id: SourceRootId,
         durability: Durability,
     ) {
@@ -176,23 +176,23 @@ pub struct EditionedFileId {
 impl EditionedFileId {
     // Salsa already uses the name `new`...
     #[inline]
-    pub fn new(db: &dyn salsa::Database, file_id: FileId, edition: Edition) -> Self {
+    pub fn new(db: &dyn salsa::Database, file_id: File, edition: Edition) -> Self {
         EditionedFileId::from_span(db, span::EditionedFileId::new(file_id, edition))
     }
 
     #[inline]
-    pub fn current_edition(db: &dyn salsa::Database, file_id: FileId) -> Self {
+    pub fn current_edition(db: &dyn salsa::Database, file_id: File) -> Self {
         EditionedFileId::new(db, file_id, Edition::CURRENT)
     }
 
     #[inline]
-    pub fn file_id(self, db: &dyn salsa::Database) -> vfs::FileId {
+    pub fn file_id(self, db: &dyn salsa::Database) -> vfs::File {
         let id = self.editioned_file_id(db);
         id.file_id()
     }
 
     #[inline]
-    pub fn unpack(self, db: &dyn salsa::Database) -> (vfs::FileId, span::Edition) {
+    pub fn unpack(self, db: &dyn salsa::Database) -> (vfs::File, span::Edition) {
         let id = self.editioned_file_id(db);
         (id.file_id(), id.edition())
     }
@@ -206,7 +206,7 @@ impl EditionedFileId {
 #[salsa_macros::input(debug)]
 pub struct FileText {
     pub text: Arc<str>,
-    pub file_id: vfs::FileId,
+    pub file_id: vfs::File,
 }
 
 #[salsa_macros::input(debug)]
@@ -219,10 +219,7 @@ pub struct SourceRootInput {
     pub source_root: Arc<SourceRoot>,
 }
 
-#[salsa_macros::input(debug)]
-pub struct FilePathInput {
-    pub path: VfsPath,
-}
+
 
 /// Database which stores all significant input facts: source code and project
 /// model. Everything else in rust-analyzer is derived from these queries.
@@ -245,7 +242,7 @@ pub trait RootQueryDb: SourceDatabase + salsa::Database {
     fn source_root_crates(&self, id: SourceRootId) -> Arc<[Crate]>;
 
     #[salsa::transparent]
-    fn relevant_crates(&self, file_id: FileId) -> Arc<[Crate]>;
+    fn relevant_crates(&self, file_id: File) -> Arc<[Crate]>;
 
     /// Returns the crates in topological order.
     ///
@@ -289,13 +286,13 @@ pub fn transitive_deps(db: &dyn SourceDatabase, crate_id: Crate) -> FxHashSet<Cr
 #[salsa_macros::db]
 pub trait SourceDatabase: salsa::Database {
     /// Text of the file.
-    fn file_text(&self, file_id: vfs::FileId) -> FileText;
+    fn file_text(&self, file_id: vfs::File) -> FileText;
 
-    fn set_file_text(&mut self, file_id: vfs::FileId, text: &str);
+    fn set_file_text(&mut self, file_id: vfs::File, text: &str);
 
     fn set_file_text_with_durability(
         &mut self,
-        file_id: vfs::FileId,
+        file_id: vfs::File,
         text: &str,
         durability: Durability,
     );
@@ -303,11 +300,11 @@ pub trait SourceDatabase: salsa::Database {
     /// Contents of the source root.
     fn source_root(&self, id: SourceRootId) -> SourceRootInput;
 
-    fn file_source_root(&self, id: vfs::FileId) -> FileSourceRootInput;
+    fn file_source_root(&self, id: vfs::File) -> FileSourceRootInput;
 
     fn set_file_source_root_with_durability(
         &mut self,
-        id: vfs::FileId,
+        id: vfs::File,
         source_root_id: SourceRootId,
         durability: Durability,
     );
@@ -320,7 +317,7 @@ pub trait SourceDatabase: salsa::Database {
         durability: Durability,
     );
 
-    fn resolve_path(&self, path: AnchoredPath<'_>) -> Option<FileId> {
+    fn resolve_path(&self, path: AnchoredPath<'_>) -> Option<File> {
         // FIXME: this *somehow* should be platform agnostic...
         let source_root = self.file_source_root(path.anchor);
         let source_root = self.source_root(source_root.source_root_id(self));
@@ -388,7 +385,7 @@ fn source_root_crates(db: &dyn RootQueryDb, id: SourceRootId) -> Arc<[Crate]> {
         .collect()
 }
 
-fn relevant_crates(db: &dyn RootQueryDb, file_id: FileId) -> Arc<[Crate]> {
+fn relevant_crates(db: &dyn RootQueryDb, file_id: File) -> Arc<[Crate]> {
     let _p = tracing::info_span!("relevant_crates").entered();
 
     let source_root = db.file_source_root(file_id);

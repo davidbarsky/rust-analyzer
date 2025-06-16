@@ -9,7 +9,7 @@ use std::{
 use base64::{Engine, prelude::BASE64_STANDARD};
 use ide::{
     Annotation, AnnotationKind, Assist, AssistKind, Cancellable, CompletionFieldsToResolve,
-    CompletionItem, CompletionItemKind, CompletionRelevance, Documentation, FileId, FileRange,
+    CompletionItem, CompletionItemKind, CompletionRelevance, Documentation, File, FileRange,
     FileSystemEdit, Fold, FoldKind, Highlight, HlMod, HlOperator, HlPunct, HlRange, HlTag, Indel,
     InlayFieldsToResolve, InlayHint, InlayHintLabel, InlayHintLabelPart, InlayKind, LazyProperty,
     Markup, NavigationTarget, ReferenceCategory, RenameError, Runnable, Severity, SignatureHelp,
@@ -553,7 +553,7 @@ pub(crate) fn inlay_hint(
     snap: &GlobalStateSnapshot,
     fields_to_resolve: &InlayFieldsToResolve,
     line_index: &LineIndex,
-    file_id: FileId,
+    file_id: File,
     mut inlay_hint: InlayHint,
 ) -> Cancellable<lsp_types::InlayHint> {
     let hint_needs_resolve = |hint: &InlayHint| -> Option<TextRange> {
@@ -949,7 +949,7 @@ pub(crate) fn folding_range(
     }
 }
 
-pub(crate) fn url(snap: &GlobalStateSnapshot, file_id: FileId) -> lsp_types::Url {
+pub(crate) fn url(snap: &GlobalStateSnapshot, file_id: File) -> lsp_types::Url {
     snap.file_id_to_url(file_id)
 }
 
@@ -987,7 +987,7 @@ pub(crate) fn url_from_abs_path(path: &AbsPath) -> lsp_types::Url {
 
 pub(crate) fn optional_versioned_text_document_identifier(
     snap: &GlobalStateSnapshot,
-    file_id: FileId,
+    file_id: File,
 ) -> lsp_types::OptionalVersionedTextDocumentIdentifier {
     let url = url(snap, file_id);
     let version = snap.url_file_version(&url);
@@ -1244,7 +1244,7 @@ fn merge_text_and_snippet_edits(
 pub(crate) fn snippet_text_document_edit(
     snap: &GlobalStateSnapshot,
     is_snippet: bool,
-    file_id: FileId,
+    file_id: File,
     edit: TextEdit,
     snippet_edit: Option<SnippetEdit>,
 ) -> Cancellable<lsp_ext::SnippetTextDocumentEdit> {

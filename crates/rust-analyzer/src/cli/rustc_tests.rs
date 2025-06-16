@@ -19,14 +19,14 @@ use project_model::{
 use load_cargo::{LoadCargoConfig, ProcMacroServerChoice, load_workspace};
 use rustc_hash::FxHashMap;
 use triomphe::Arc;
-use vfs::{AbsPathBuf, FileId};
+use vfs::{AbsPathBuf, File};
 use walkdir::WalkDir;
 
 use crate::cli::{Result, flags, report_metric};
 
 struct Tester {
     host: AnalysisHost,
-    root_file: FileId,
+    root_file: File,
     pass_count: u64,
     ignore_count: u64,
     fail_count: u64,

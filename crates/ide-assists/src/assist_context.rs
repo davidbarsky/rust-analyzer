@@ -1,7 +1,7 @@
 //! See [`AssistContext`].
 
 use hir::{EditionedFileId, FileRange, Semantics};
-use ide_db::{FileId, RootDatabase, label::Label};
+use ide_db::{File, RootDatabase, label::Label};
 use syntax::Edition;
 use syntax::{
     AstNode, AstToken, Direction, SourceFile, SyntaxElement, SyntaxKind, SyntaxToken, TextRange,
@@ -104,7 +104,7 @@ impl<'a> AssistContext<'a> {
         self.frange.range.start()
     }
 
-    pub(crate) fn vfs_file_id(&self) -> FileId {
+    pub(crate) fn vfs_file_id(&self) -> File {
         self.frange.file_id.file_id(self.db())
     }
 
@@ -158,7 +158,7 @@ impl<'a> AssistContext<'a> {
 }
 
 pub(crate) struct Assists {
-    file: FileId,
+    file: File,
     resolve: AssistResolveStrategy,
     buf: Vec<Assist>,
     allowed: Option<Vec<AssistKind>>,

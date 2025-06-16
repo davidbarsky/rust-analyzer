@@ -25,7 +25,7 @@ use syntax::{
 };
 
 use crate::{
-    FileId, FilePosition, NavigationTarget, RangeInfo, Runnable, TryToNav,
+    File, FilePosition, NavigationTarget, RangeInfo, Runnable, TryToNav,
     doc_links::token_as_doc_comment,
     markdown_remove::remove_markdown,
     markup::Markup,
@@ -424,7 +424,7 @@ fn hover_ranged(
 // FIXME: Why is this pub(crate)?
 pub(crate) fn hover_for_definition(
     sema: &Semantics<'_, RootDatabase>,
-    file_id: FileId,
+    file_id: File,
     def: Definition,
     subst: Option<GenericSubstitution<'_>>,
     scope_node: &SyntaxNode,
@@ -546,7 +546,7 @@ fn show_fn_references_action(db: &RootDatabase, def: Definition) -> Option<Hover
 fn runnable_action(
     sema: &hir::Semantics<'_, RootDatabase>,
     def: Definition,
-    file_id: FileId,
+    file_id: File,
 ) -> Option<HoverAction> {
     match def {
         Definition::Module(it) => runnable_mod(sema, it).map(HoverAction::Runnable),

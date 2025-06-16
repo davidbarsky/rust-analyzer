@@ -6,11 +6,11 @@ use stdx::format_to;
 use syntax::AstNode;
 
 use crate::{
-    FileId, RootDatabase,
+    File, RootDatabase,
     syntax_highlighting::{HighlightConfig, highlight},
 };
 
-pub(crate) fn highlight_as_html(db: &RootDatabase, file_id: FileId, rainbow: bool) -> String {
+pub(crate) fn highlight_as_html(db: &RootDatabase, file_id: File, rainbow: bool) -> String {
     let sema = Semantics::new(db);
     let file_id = sema
         .attach_first_edition(file_id)

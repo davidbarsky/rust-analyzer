@@ -7,7 +7,7 @@ use hir::{DefMap, InFile, ModuleSource};
 use ide_db::base_db::RootQueryDb;
 use ide_db::text_edit::TextEdit;
 use ide_db::{
-    FileId, FileRange, LineIndexDatabase, base_db::SourceDatabase, source_change::SourceChange,
+    File, FileRange, LineIndexDatabase, base_db::SourceDatabase, source_change::SourceChange,
 };
 use paths::Utf8Component;
 use syntax::{
@@ -24,7 +24,7 @@ use crate::{Assist, Diagnostic, DiagnosticCode, DiagnosticsContext, Severity, fi
 pub(crate) fn unlinked_file(
     ctx: &DiagnosticsContext<'_>,
     acc: &mut Vec<Diagnostic>,
-    file_id: FileId,
+    file_id: File,
 ) {
     let mut range = TextRange::up_to(ctx.sema.db.line_index(file_id).len());
     let fixes = fixes(ctx, file_id, range);
@@ -76,7 +76,7 @@ pub(crate) fn unlinked_file(
 
 fn fixes(
     ctx: &DiagnosticsContext<'_>,
-    file_id: FileId,
+    file_id: File,
     trigger_range: TextRange,
 ) -> Option<Vec<Assist>> {
     // If there's an existing module that could add `mod` or `pub mod` items to include the unlinked file,
@@ -205,7 +205,7 @@ fn fixes(
 }
 
 fn make_fixes(
-    parent_file_id: FileId,
+    parent_file_id: File,
     source: ModuleSource,
     new_mod_name: &str,
     trigger_range: TextRange,

@@ -99,8 +99,10 @@ impl flags::AnalysisStats {
             Some(build_scripts_sw.elapsed())
         };
 
+        let lru_cap = std::env::var("RA_LRU_CAP").ok().and_then(|it| it.parse::<u16>().ok());
+        let db = RootDatabase::new(lru_cap);
         let (db, vfs, _proc_macro) =
-            load_workspace(workspace.clone(), &cargo_config.extra_env, &load_cargo_config)?;
+            load_workspace(workspace.clone(), db, &cargo_config.extra_env, &load_cargo_config)?;
         eprint!("{:<20} {}", "Database loaded:", db_load_sw.elapsed());
         eprint!(" (metadata {metadata_time}");
         if let Some(build_scripts_time) = build_scripts_time {
@@ -470,7 +472,8 @@ impl flags::AnalysisStats {
 
             let parse = sema.parse_guess_edition(file_id.into());
             let file_txt = db.file_text(file_id.into());
-            let path = vfs.file_path(file_id.into()).as_path().unwrap();
+            let path = file_txt.file_id(db).path(db);
+            let path = path.as_path().expect("unable to convert to `std::path::Path`");
 
             for node in parse.syntax().descendants() {
                 let expr = match syntax::ast::Expr::cast(node.clone()) {
@@ -761,7 +764,7 @@ impl flags::AnalysisStats {
                     };
                     if let Some(src) = source {
                         let original_file = src.file_id.original_file(db);
-                        let path = vfs.file_path(original_file.file_id(db));
+                        let path = original_file.file_id(db).path(db);
                         let syntax_range = src.text_range();
                         format!("processing: {} ({} {:?})", full_name(), path, syntax_range)
                     } else {

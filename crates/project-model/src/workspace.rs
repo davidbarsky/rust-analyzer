@@ -15,7 +15,7 @@ use intern::{Symbol, sym};
 use paths::{AbsPath, AbsPathBuf, Utf8PathBuf};
 use rustc_hash::{FxHashMap, FxHashSet};
 use semver::Version;
-use span::{Edition, FileId};
+use span::{Edition, File};
 use tracing::instrument;
 use triomphe::Arc;
 
@@ -32,7 +32,7 @@ use crate::{
 };
 use tracing::{debug, error, info};
 
-pub type FileLoader<'a> = &'a mut dyn for<'b> FnMut(&'b AbsPath) -> Option<FileId>;
+pub type FileLoader<'a> = &'a mut dyn for<'b> FnMut(&'b AbsPath) -> Option<File>;
 
 /// `PackageRoot` describes a package root folder.
 /// Which may be an external dependency, or a member of
@@ -1528,7 +1528,7 @@ fn add_target_crate_root(
     pkg: &PackageData,
     build_data: Option<(&BuildScriptOutput, bool)>,
     cfg_options: CfgOptions,
-    file_id: FileId,
+    file_id: File,
     cargo_name: &str,
     kind: TargetKind,
     origin: CrateOrigin,

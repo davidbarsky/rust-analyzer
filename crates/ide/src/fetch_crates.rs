@@ -1,13 +1,13 @@
 use ide_db::{
-    FileId, FxIndexSet, RootDatabase,
+    File, FxIndexSet, RootDatabase,
     base_db::{CrateOrigin, RootQueryDb},
 };
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub struct CrateInfo {
     pub name: Option<String>,
     pub version: Option<String>,
-    pub root_file_id: FileId,
+    pub root_file_id: File,
 }
 
 // Feature: Show Dependency Tree

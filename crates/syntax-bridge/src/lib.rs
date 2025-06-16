@@ -45,7 +45,6 @@ impl<S: Copy, SM: SpanMapper<S>> SpanMapper<S> for &SM {
 
 /// Dummy things for testing where spans don't matter.
 pub mod dummy_test_span_utils {
-
     use span::{Span, SyntaxContext};
 
     use super::*;
@@ -53,10 +52,7 @@ pub mod dummy_test_span_utils {
     pub const DUMMY: Span = Span {
         range: TextRange::empty(TextSize::new(0)),
         anchor: span::SpanAnchor {
-            file_id: span::EditionedFileId::new(
-                span::FileId::from_raw(0xe4e4e),
-                span::Edition::CURRENT,
-            ),
+            file_id: span::EditionedFileId::from_raw_const(0),
             ast_id: span::ROOT_ERASED_FILE_AST_ID,
         },
         ctx: SyntaxContext::root(Edition::CURRENT),
@@ -69,10 +65,7 @@ pub mod dummy_test_span_utils {
             Span {
                 range,
                 anchor: span::SpanAnchor {
-                    file_id: span::EditionedFileId::new(
-                        span::FileId::from_raw(0xe4e4e),
-                        span::Edition::CURRENT,
-                    ),
+                    file_id: span::EditionedFileId::from_raw_const(0),
                     ast_id: span::ROOT_ERASED_FILE_AST_ID,
                 },
                 ctx: SyntaxContext::root(Edition::CURRENT),

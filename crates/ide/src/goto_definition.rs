@@ -16,7 +16,7 @@ use ide_db::{
     helpers::pick_best_token,
 };
 use itertools::Itertools;
-use span::{Edition, FileId};
+use span::{Edition, File};
 use syntax::{
     AstNode, AstToken,
     SyntaxKind::*,
@@ -208,7 +208,7 @@ fn find_definition_for_known_blanket_dual_impls(
 fn try_lookup_include_path(
     sema: &Semantics<'_, RootDatabase>,
     token: InFile<ast::String>,
-    file_id: FileId,
+    file_id: File,
 ) -> Option<NavigationTarget> {
     let file = token.file_id.macro_file()?;
 

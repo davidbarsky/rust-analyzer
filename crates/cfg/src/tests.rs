@@ -43,7 +43,7 @@ fn check_why_inactive(input: &str, opts: &CfgOptions, expect: Expect) {
     let tt = syntax_node_to_token_tree(
         tt.syntax(),
         DummyTestSpanMap,
-        DUMMY,
+        todo!(),
         DocCommentDesugarMode::ProcMacro,
     );
     let cfg = CfgExpr::parse(&tt);

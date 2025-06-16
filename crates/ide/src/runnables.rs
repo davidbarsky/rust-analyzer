@@ -26,7 +26,7 @@ use syntax::{
     format_smolstr,
 };
 
-use crate::{FileId, NavigationTarget, ToNav, TryToNav, references};
+use crate::{File, NavigationTarget, ToNav, TryToNav, references};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Runnable {
@@ -126,7 +126,7 @@ impl Runnable {
 // | VS Code | **rust-analyzer: Run** |
 //
 // ![Run](https://user-images.githubusercontent.com/48062697/113065583-055aae80-91b1-11eb-958f-d67efcaf6a2f.gif)
-pub(crate) fn runnables(db: &RootDatabase, file_id: FileId) -> Vec<Runnable> {
+pub(crate) fn runnables(db: &RootDatabase, file_id: File) -> Vec<Runnable> {
     let sema = Semantics::new(db);
 
     let mut res = Vec::new();

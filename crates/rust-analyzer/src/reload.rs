@@ -911,7 +911,7 @@ impl GlobalState {
 pub fn ws_to_crate_graph(
     workspaces: &[ProjectWorkspace],
     extra_env: &FxHashMap<String, Option<String>>,
-    mut load: impl FnMut(&AbsPath) -> Option<vfs::FileId>,
+    mut load: impl FnMut(&AbsPath) -> Option<vfs::File>,
 ) -> (CrateGraphBuilder, Vec<ProcMacroPaths>) {
     let mut crate_graph = CrateGraphBuilder::default();
     let mut proc_macro_paths = Vec::default();

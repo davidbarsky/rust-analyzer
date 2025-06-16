@@ -82,7 +82,7 @@ use crate::{errors::bail, matching::MatchFailureReason};
 use hir::{FileRange, Semantics};
 use ide_db::symbol_index::SymbolsDatabase;
 use ide_db::text_edit::TextEdit;
-use ide_db::{EditionedFileId, FileId, FxHashMap, RootDatabase, base_db::SourceDatabase};
+use ide_db::{EditionedFileId, File, FxHashMap, RootDatabase, base_db::SourceDatabase};
 use resolving::ResolvedRule;
 use syntax::{AstNode, SyntaxNode, TextRange, ast};
 
@@ -169,7 +169,7 @@ impl<'db> MatchFinder<'db> {
     }
 
     /// Finds matches for all added rules and returns edits for all found matches.
-    pub fn edits(&self) -> FxHashMap<FileId, TextEdit> {
+    pub fn edits(&self) -> FxHashMap<File, TextEdit> {
         let mut matches_by_file = FxHashMap::default();
         for m in self.matches().matches {
             matches_by_file

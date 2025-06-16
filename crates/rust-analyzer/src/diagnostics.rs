@@ -4,7 +4,7 @@ pub(crate) mod to_proto;
 use std::mem;
 
 use cargo_metadata::PackageId;
-use ide::FileId;
+use ide::File;
 use ide_db::{FxHashMap, base_db::DbPanicContext};
 use itertools::Itertools;
 use rustc_hash::FxHashSet;
@@ -14,7 +14,7 @@ use triomphe::Arc;
 use crate::{global_state::GlobalStateSnapshot, lsp, lsp_ext, main_loop::DiagnosticsTaskKind};
 
 pub(crate) type CheckFixes =
-    Arc<Vec<FxHashMap<Option<Arc<PackageId>>, FxHashMap<FileId, Vec<Fix>>>>>;
+    Arc<Vec<FxHashMap<Option<Arc<PackageId>>, FxHashMap<File, Vec<Fix>>>>>;
 
 #[derive(Debug, Default, Clone)]
 pub struct DiagnosticsMapConfig {
@@ -30,14 +30,14 @@ pub(crate) type DiagnosticsGeneration = usize;
 pub(crate) struct DiagnosticCollection {
     // FIXME: should be FxHashMap<FileId, Vec<ra_id::Diagnostic>>
     pub(crate) native_syntax:
-        FxHashMap<FileId, (DiagnosticsGeneration, Vec<lsp_types::Diagnostic>)>,
+        FxHashMap<File, (DiagnosticsGeneration, Vec<lsp_types::Diagnostic>)>,
     pub(crate) native_semantic:
-        FxHashMap<FileId, (DiagnosticsGeneration, Vec<lsp_types::Diagnostic>)>,
+        FxHashMap<File, (DiagnosticsGeneration, Vec<lsp_types::Diagnostic>)>,
     // FIXME: should be Vec<flycheck::Diagnostic>
     pub(crate) check:
-        Vec<FxHashMap<Option<Arc<PackageId>>, FxHashMap<FileId, Vec<lsp_types::Diagnostic>>>>,
+        Vec<FxHashMap<Option<Arc<PackageId>>, FxHashMap<File, Vec<lsp_types::Diagnostic>>>>,
     pub(crate) check_fixes: CheckFixes,
-    changes: FxHashSet<FileId>,
+    changes: FxHashSet<File>,
     /// Counter for supplying a new generation number for diagnostics.
     /// This is used to keep track of when to clear the diagnostics for a given file as we compute
     /// diagnostics on multiple worker threads simultaneously which may result in multiple diagnostics
@@ -87,7 +87,7 @@ impl DiagnosticCollection {
         }
     }
 
-    pub(crate) fn clear_native_for(&mut self, file_id: FileId) {
+    pub(crate) fn clear_native_for(&mut self, file_id: File) {
         self.native_syntax.remove(&file_id);
         self.native_semantic.remove(&file_id);
         self.changes.insert(file_id);
@@ -97,7 +97,7 @@ impl DiagnosticCollection {
         &mut self,
         flycheck_id: usize,
         package_id: &Option<Arc<PackageId>>,
-        file_id: FileId,
+        file_id: File,
         diagnostic: lsp_types::Diagnostic,
         fix: Option<Box<Fix>>,
     ) {
@@ -170,7 +170,7 @@ impl DiagnosticCollection {
 
     pub(crate) fn diagnostics_for(
         &self,
-        file_id: FileId,
+        file_id: File,
     ) -> impl Iterator<Item = &lsp_types::Diagnostic> {
         let native_syntax = self.native_syntax.get(&file_id).into_iter().flat_map(|(_, d)| d);
         let native_semantic = self.native_semantic.get(&file_id).into_iter().flat_map(|(_, d)| d);
@@ -183,7 +183,7 @@ impl DiagnosticCollection {
         native_syntax.chain(native_semantic).chain(check)
     }
 
-    pub(crate) fn take_changes(&mut self) -> Option<FxHashSet<FileId>> {
+    pub(crate) fn take_changes(&mut self) -> Option<FxHashSet<File>> {
         if self.changes.is_empty() {
             return None;
         }
@@ -210,10 +210,10 @@ pub(crate) enum NativeDiagnosticsFetchKind {
 
 pub(crate) fn fetch_native_diagnostics(
     snapshot: &GlobalStateSnapshot,
-    subscriptions: std::sync::Arc<[FileId]>,
+    subscriptions: std::sync::Arc<[File]>,
     slice: std::ops::Range<usize>,
     kind: NativeDiagnosticsFetchKind,
-) -> Vec<(FileId, Vec<lsp_types::Diagnostic>)> {
+) -> Vec<(File, Vec<lsp_types::Diagnostic>)> {
     let _p = tracing::info_span!("fetch_native_diagnostics").entered();
     let _ctx = DbPanicContext::enter("fetch_native_diagnostics".to_owned());
 

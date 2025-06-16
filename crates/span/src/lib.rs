@@ -16,7 +16,7 @@ pub use self::{
 
 pub use syntax::Edition;
 pub use text_size::{TextRange, TextSize};
-pub use vfs::FileId;
+pub use vfs::File;
 
 pub type Span = SpanData<SyntaxContext>;
 
@@ -109,7 +109,7 @@ impl fmt::Debug for EditionedFileId {
     }
 }
 
-impl From<EditionedFileId> for FileId {
+impl From<EditionedFileId> for File {
     fn from(value: EditionedFileId) -> Self {
         value.file_id()
     }
@@ -137,11 +137,11 @@ impl EditionedFileId {
     pub const FILE_ID_BITS: u32 = Self::FILE_ID_MASK.count_ones();
     pub const EDITION_BITS: u32 = Self::EDITION_MASK.count_ones();
 
-    pub const fn current_edition(file_id: FileId) -> Self {
+    pub const fn current_edition(file_id: File) -> Self {
         Self::new(file_id, Edition::CURRENT)
     }
 
-    pub const fn new(file_id: FileId, edition: Edition) -> Self {
+    pub const fn new(file_id: File, edition: Edition) -> Self {
         let file_id = file_id.index();
         let edition = edition as u32;
         assert!(file_id <= Self::MAX_FILE_ID);
@@ -154,15 +154,20 @@ impl EditionedFileId {
         Self(u32)
     }
 
+    pub const fn from_raw_const(u32: u32) -> Self {
+        Self(u32)
+    }
+
     pub const fn as_u32(self) -> u32 {
         self.0
     }
 
-    pub const fn file_id(self) -> FileId {
-        FileId::from_raw(self.0 & Self::FILE_ID_MASK)
+    pub const fn file_id(self) -> File {
+        todo!()
+        // File::(self.0 & Self::FILE_ID_MASK)
     }
 
-    pub const fn unpack(self) -> (FileId, Edition) {
+    pub const fn unpack(self) -> (File, Edition) {
         (self.file_id(), self.edition())
     }
 

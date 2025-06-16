@@ -25,7 +25,7 @@ use rustc_apfloat::{
     ieee::{Half as f16, Quad as f128},
 };
 use rustc_hash::{FxHashMap, FxHashSet};
-use span::FileId;
+use span::File;
 use stdx::never;
 use syntax::{SyntaxNodePtr, TextRange};
 use triomphe::Arc;
@@ -359,7 +359,7 @@ impl MirEvalError {
         &self,
         f: &mut String,
         db: &dyn HirDatabase,
-        span_formatter: impl Fn(FileId, TextRange) -> String,
+        span_formatter: impl Fn(File, TextRange) -> String,
         display_target: DisplayTarget,
     ) -> std::result::Result<(), std::fmt::Error> {
         writeln!(f, "Mir eval error:")?;

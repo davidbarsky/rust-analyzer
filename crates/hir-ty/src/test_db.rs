@@ -11,7 +11,7 @@ use hir_def::{ModuleId, db::DefDatabase, nameres::crate_def_map};
 use hir_expand::EditionedFileId;
 use rustc_hash::FxHashMap;
 use salsa::{AsDynDatabase, Durability};
-use span::FileId;
+use span::File;
 use syntax::TextRange;
 use test_utils::extract_annotations;
 use triomphe::Arc;

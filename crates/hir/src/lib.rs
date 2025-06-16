@@ -83,7 +83,7 @@ use itertools::Itertools;
 use nameres::diagnostics::DefDiagnosticKind;
 use rustc_hash::FxHashSet;
 use smallvec::SmallVec;
-use span::{AstIdNode, Edition, FileId};
+use span::{AstIdNode, Edition, File};
 use stdx::{format_to, impl_from, never, variance::PhantomCovariantLifetime};
 use syntax::{
     AstNode, AstPtr, SmolStr, SyntaxNode, SyntaxNodePtr, T, TextRange, ToSmolStr,
@@ -234,7 +234,7 @@ impl Crate {
         def_map.modules().map(|(id, _)| def_map.module_id(id).into()).collect()
     }
 
-    pub fn root_file(self, db: &dyn HirDatabase) -> FileId {
+    pub fn root_file(self, db: &dyn HirDatabase) -> File {
         self.id.data(db).root_file_id
     }
 
@@ -2481,7 +2481,7 @@ impl Function {
     pub fn eval(
         self,
         db: &dyn HirDatabase,
-        span_formatter: impl Fn(FileId, TextRange) -> String,
+        span_formatter: impl Fn(File, TextRange) -> String,
     ) -> Result<String, ConstEvalError> {
         let body = db.monomorphized_mir_body(
             self.id.into(),

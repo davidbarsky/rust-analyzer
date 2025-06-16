@@ -7,7 +7,7 @@ use ide_db::{
 use load_cargo::{LoadCargoConfig, ProcMacroServerChoice, load_workspace_at};
 use parser::SyntaxKind;
 use syntax::{AstNode, WalkEvent, ast};
-use vfs::FileId;
+use vfs::File;
 
 use crate::cli::flags;
 
@@ -109,7 +109,7 @@ fn all_modules(db: &dyn HirDatabase) -> Vec<Module> {
 fn find_unresolved_references(
     db: &RootDatabase,
     sema: &Semantics<'_, RootDatabase>,
-    file_id: FileId,
+    file_id: File,
     module: &Module,
 ) -> Vec<TextRange> {
     let mut unresolved_references = all_unresolved_references(sema, file_id);
@@ -137,7 +137,7 @@ fn find_unresolved_references(
 
 fn all_unresolved_references(
     sema: &Semantics<'_, RootDatabase>,
-    file_id: FileId,
+    file_id: File,
 ) -> Vec<TextRange> {
     let file_id = sema
         .attach_first_edition(file_id)

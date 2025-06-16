@@ -29,7 +29,7 @@ use serde_json::json;
 use stdx::{format_to, never};
 use syntax::{TextRange, TextSize};
 use triomphe::Arc;
-use vfs::{AbsPath, AbsPathBuf, FileId, VfsPath};
+use vfs::{AbsPath, AbsPathBuf, File, VfsPath};
 
 use crate::{
     config::{Config, RustfmtConfig, WorkspaceSymbolConfig},
@@ -1758,7 +1758,7 @@ pub(crate) fn handle_inlay_hints_resolve(
         return Ok(original_hint);
     };
     let resolve_data: lsp_ext::InlayHintResolveData = serde_json::from_value(data)?;
-    let file_id = FileId::from_raw(resolve_data.file_id);
+    let file_id = File::from_raw(resolve_data.file_id);
     if resolve_data.version != snap.file_version(file_id) {
         tracing::warn!("Inlay hint resolve data is outdated");
         return Ok(original_hint);

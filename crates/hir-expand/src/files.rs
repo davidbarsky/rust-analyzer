@@ -2,7 +2,7 @@
 use std::borrow::Borrow;
 
 use either::Either;
-use span::{AstIdNode, ErasedFileAstId, FileAstId, FileId, SyntaxContext};
+use span::{AstIdNode, ErasedFileAstId, FileAstId, File, SyntaxContext};
 use syntax::{AstNode, AstPtr, SyntaxNode, SyntaxNodePtr, SyntaxToken, TextRange, TextSize};
 
 use crate::{
@@ -38,7 +38,7 @@ pub type FilePosition = FilePositionWrapper<EditionedFileId>;
 
 impl FilePosition {
     #[inline]
-    pub fn into_file_id(self, db: &dyn ExpandDatabase) -> FilePositionWrapper<FileId> {
+    pub fn into_file_id(self, db: &dyn ExpandDatabase) -> FilePositionWrapper<File> {
         FilePositionWrapper { file_id: self.file_id.file_id(db), offset: self.offset }
     }
 }
@@ -55,7 +55,7 @@ impl From<FilePosition> for HirFilePosition {
     }
 }
 
-impl FilePositionWrapper<span::FileId> {
+impl FilePositionWrapper<span::File> {
     pub fn with_edition(self, db: &dyn ExpandDatabase, edition: span::Edition) -> FilePosition {
         FilePositionWrapper {
             file_id: EditionedFileId::new(db, self.file_id, edition),
@@ -64,7 +64,7 @@ impl FilePositionWrapper<span::FileId> {
     }
 }
 
-impl FileRangeWrapper<span::FileId> {
+impl FileRangeWrapper<span::File> {
     pub fn with_edition(self, db: &dyn ExpandDatabase, edition: span::Edition) -> FileRange {
         FileRangeWrapper {
             file_id: EditionedFileId::new(db, self.file_id, edition),
@@ -73,7 +73,7 @@ impl FileRangeWrapper<span::FileId> {
     }
 }
 
-impl<T> InFileWrapper<span::FileId, T> {
+impl<T> InFileWrapper<span::File, T> {
     pub fn with_edition(self, db: &dyn ExpandDatabase, edition: span::Edition) -> InRealFile<T> {
         InRealFile { file_id: EditionedFileId::new(db, self.file_id, edition), value: self.value }
     }
@@ -96,7 +96,7 @@ pub type FileRange = FileRangeWrapper<EditionedFileId>;
 
 impl FileRange {
     #[inline]
-    pub fn into_file_id(self, db: &dyn ExpandDatabase) -> FileRangeWrapper<FileId> {
+    pub fn into_file_id(self, db: &dyn ExpandDatabase) -> FileRangeWrapper<File> {
         FileRangeWrapper { file_id: self.file_id.file_id(db), range: self.range }
     }
 }

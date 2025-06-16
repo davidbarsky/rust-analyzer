@@ -18,7 +18,7 @@ use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet, FxHasher};
 use salsa::{Durability, Setter};
 use span::Edition;
 use triomphe::Arc;
-use vfs::{AbsPathBuf, AnchoredPath, FileId, VfsPath, file_set::FileSet};
+use vfs::{AbsPathBuf, AnchoredPath, File, VfsPath, file_set::FileSet};
 
 use crate::{CrateWorkspaceData, EditionedFileId, FxIndexSet, RootQueryDb};
 
@@ -53,19 +53,19 @@ impl SourceRoot {
         SourceRoot { is_library: true, file_set }
     }
 
-    pub fn path_for_file(&self, file: &FileId) -> Option<&VfsPath> {
+    pub fn path_for_file(&self, file: &File) -> Option<&VfsPath> {
         self.file_set.path_for_file(file)
     }
 
-    pub fn file_for_path(&self, path: &VfsPath) -> Option<&FileId> {
+    pub fn file_for_path(&self, path: &VfsPath) -> Option<&File> {
         self.file_set.file_for_path(path)
     }
 
-    pub fn resolve_path(&self, path: AnchoredPath<'_>) -> Option<FileId> {
+    pub fn resolve_path(&self, path: AnchoredPath<'_>) -> Option<File> {
         self.file_set.resolve_path(path)
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = FileId> + '_ {
+    pub fn iter(&self) -> impl Iterator<Item = File> + '_ {
         self.file_set.iter()
     }
 }
@@ -287,13 +287,13 @@ impl ReleaseChannel {
 /// the other, we store for it, because it has more dependencies to be invalidated).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct UniqueCrateData {
-    root_file_id: FileId,
+    root_file_id: File,
     disambiguator: Option<Box<(BuiltCrateData, HashableCfgOptions)>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct CrateData<Id> {
-    pub root_file_id: FileId,
+    pub root_file_id: File,
     pub edition: Edition,
     /// The dependencies of this crate.
     ///
@@ -418,7 +418,7 @@ pub struct CratesMap(DashMap<UniqueCrateData, Crate, BuildHasherDefault<FxHasher
 impl CrateGraphBuilder {
     pub fn add_crate_root(
         &mut self,
-        root_file_id: FileId,
+        root_file_id: File,
         edition: Edition,
         display_name: Option<CrateDisplayName>,
         version: Option<String>,
@@ -512,7 +512,7 @@ impl CrateGraphBuilder {
             db: &mut dyn RootQueryDb,
             crates_map: &CratesMap,
             visited: &mut FxHashMap<CrateBuilderId, Crate>,
-            visited_root_files: &mut FxHashSet<FileId>,
+            visited_root_files: &mut FxHashSet<File>,
             all_crates: &mut FxIndexSet<Crate>,
             source: CrateBuilderId,
         ) -> Crate {
@@ -871,11 +871,11 @@ impl fmt::Display for CyclicDependenciesError {
 #[cfg(test)]
 mod tests {
     use triomphe::Arc;
-    use vfs::AbsPathBuf;
+    use vfs::{AbsPathBuf, VfsPath};
 
     use crate::{CrateWorkspaceData, DependencyBuilder};
 
-    use super::{CrateGraphBuilder, CrateName, CrateOrigin, Edition::Edition2018, Env, FileId};
+    use super::{CrateGraphBuilder, CrateName, CrateOrigin, Edition::Edition2018, Env, File};
 
     fn empty_ws_data() -> Arc<CrateWorkspaceData> {
         Arc::new(CrateWorkspaceData { data_layout: Err("".into()), toolchain: None })
@@ -884,8 +884,9 @@ mod tests {
     #[test]
     fn detect_cyclic_dependency_indirect() {
         let mut graph = CrateGraphBuilder::default();
+        let db = salsa::DatabaseImpl::new();
         let crate1 = graph.add_crate_root(
-            FileId::from_raw(1u32),
+            File::new(&db, VfsPath::new_virtual_path("path/one.rs".to_owned())),
             Edition2018,
             None,
             None,
@@ -898,7 +899,7 @@ mod tests {
             empty_ws_data(),
         );
         let crate2 = graph.add_crate_root(
-            FileId::from_raw(2u32),
+            File::new(&db, VfsPath::new_virtual_path("path/two.rs".to_owned())),
             Edition2018,
             None,
             None,
@@ -911,7 +912,7 @@ mod tests {
             empty_ws_data(),
         );
         let crate3 = graph.add_crate_root(
-            FileId::from_raw(3u32),
+            File::new(&db, VfsPath::new_virtual_path("path/three.rs".to_owned())),
             Edition2018,
             None,
             None,
@@ -943,8 +944,9 @@ mod tests {
     #[test]
     fn detect_cyclic_dependency_direct() {
         let mut graph = CrateGraphBuilder::default();
+        let db = salsa::DatabaseImpl::new();
         let crate1 = graph.add_crate_root(
-            FileId::from_raw(1u32),
+            File::new(&db, VfsPath::new_virtual_path("path/one.rs".to_owned())),
             Edition2018,
             None,
             None,
@@ -957,7 +959,7 @@ mod tests {
             empty_ws_data(),
         );
         let crate2 = graph.add_crate_root(
-            FileId::from_raw(2u32),
+            File::new(&db, VfsPath::new_virtual_path("path/two.rs".to_owned())),
             Edition2018,
             None,
             None,
@@ -984,8 +986,9 @@ mod tests {
     #[test]
     fn it_works() {
         let mut graph = CrateGraphBuilder::default();
+        let db = salsa::DatabaseImpl::new();
         let crate1 = graph.add_crate_root(
-            FileId::from_raw(1u32),
+            File::new(&db, VfsPath::new_virtual_path("path/one.rs".to_owned())),
             Edition2018,
             None,
             None,
@@ -998,7 +1001,7 @@ mod tests {
             empty_ws_data(),
         );
         let crate2 = graph.add_crate_root(
-            FileId::from_raw(2u32),
+            File::new(&db, VfsPath::new_virtual_path("path/two.rs".to_owned())),
             Edition2018,
             None,
             None,
@@ -1011,7 +1014,7 @@ mod tests {
             empty_ws_data(),
         );
         let crate3 = graph.add_crate_root(
-            FileId::from_raw(3u32),
+            File::new(&db, VfsPath::new_virtual_path("path/three.rs".to_owned())),
             Edition2018,
             None,
             None,
@@ -1038,8 +1041,9 @@ mod tests {
     #[test]
     fn dashes_are_normalized() {
         let mut graph = CrateGraphBuilder::default();
+        let db = salsa::DatabaseImpl::new();
         let crate1 = graph.add_crate_root(
-            FileId::from_raw(1u32),
+            File::new(&db, VfsPath::new_virtual_path("path/one.rs".to_owned())),
             Edition2018,
             None,
             None,
@@ -1052,7 +1056,7 @@ mod tests {
             empty_ws_data(),
         );
         let crate2 = graph.add_crate_root(
-            FileId::from_raw(2u32),
+            File::new(&db, VfsPath::new_virtual_path("path/two.rs".to_owned())),
             Edition2018,
             None,
             None,

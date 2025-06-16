@@ -5,7 +5,7 @@ use std::fmt;
 
 use salsa::Durability;
 use triomphe::Arc;
-use vfs::FileId;
+use vfs::File;
 
 use crate::{CrateGraphBuilder, CratesIdMap, RootQueryDb, SourceRoot, SourceRootId};
 
@@ -13,7 +13,7 @@ use crate::{CrateGraphBuilder, CratesIdMap, RootQueryDb, SourceRoot, SourceRootI
 #[derive(Default)]
 pub struct FileChange {
     pub roots: Option<Vec<SourceRoot>>,
-    pub files_changed: Vec<(FileId, Option<String>)>,
+    pub files_changed: Vec<(File, Option<String>)>,
     pub crate_graph: Option<CrateGraphBuilder>,
 }
 
@@ -38,7 +38,7 @@ impl FileChange {
         self.roots = Some(roots);
     }
 
-    pub fn change_file(&mut self, file_id: FileId, new_text: Option<String>) {
+    pub fn change_file(&mut self, file_id: File, new_text: Option<String>) {
         self.files_changed.push((file_id, new_text))
     }
 
