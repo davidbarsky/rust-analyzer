@@ -46,8 +46,6 @@ mod vfs_path;
 
 use std::{fmt, hash::BuildHasherDefault, mem};
 
-use crate::path_interner::PathInterner;
-
 pub use crate::{
     anchored_path::{AnchoredPath, AnchoredPathBuf},
     vfs_path::VfsPath,
@@ -55,6 +53,7 @@ pub use crate::{
 use indexmap::{IndexMap, map::Entry};
 pub use paths::{AbsPath, AbsPathBuf};
 
+use base_db::FilePathInput;
 use rustc_hash::FxHasher;
 use stdx::hash_once;
 use tracing::{Level, span};
@@ -89,9 +88,8 @@ impl nohash_hasher::IsEnabled for FileId {}
 /// For more information see the [crate-level](crate) documentation.
 #[derive(Default)]
 pub struct Vfs {
-    interner: PathInterner,
-    data: Vec<FileState>,
-    changes: IndexMap<FileId, ChangedFile, BuildHasherDefault<FxHasher>>,
+    data: IndexMap<FilePathInput, FileState, BuildHasherDefault<FxHasher>>,
+    changes: IndexMap<FilePathInput, ChangedFile, BuildHasherDefault<FxHasher>>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, PartialOrd)]
@@ -108,8 +106,8 @@ pub enum FileState {
 /// Changed file in the [`Vfs`].
 #[derive(Debug)]
 pub struct ChangedFile {
-    /// Id of the changed file
-    pub file_id: FileId,
+    /// Path of the changed file
+    pub file_path: FilePathInput,
     /// Kind of change
     pub change: Change,
 }
