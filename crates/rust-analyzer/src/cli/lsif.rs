@@ -141,7 +141,7 @@ impl LsifManager<'_, '_> {
         if let Some(it) = self.file_map.get(&id) {
             return *it;
         }
-        let path = self.vfs.file_path(id);
+        let path = id.path(self.db);
         let path = path.as_path().unwrap();
         let doc_id = self.add_vertex(lsif::Vertex::Document(lsif::Document {
             language_id: "rust".to_owned(),
@@ -302,8 +302,9 @@ impl flags::Lsif {
         let build_scripts = workspace.run_build_scripts(cargo_config, no_progress)?;
         workspace.set_build_scripts(build_scripts);
 
+        let db = RootDatabase::default();
         let (db, vfs, _proc_macro) =
-            load_workspace(workspace, &cargo_config.extra_env, &load_cargo_config)?;
+            load_workspace(workspace, db, &cargo_config.extra_env, &load_cargo_config)?;
         let host = AnalysisHost::with_database(db);
         let db = host.raw_database();
         let analysis = host.analysis();

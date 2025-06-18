@@ -133,7 +133,7 @@ impl flags::Scip {
         for StaticIndexedFile { file_id, tokens, .. } in si.files {
             symbol_generator.clear_document_local_state();
 
-            let Some(relative_path) = get_relative_filepath(&vfs, &root, file_id) else { continue };
+            let Some(relative_path) = get_relative_filepath(&db, &root, file_id) else { continue };
             let line_index = get_line_index(db, file_id);
 
             let mut occurrences = Vec::new();
@@ -232,7 +232,7 @@ impl flags::Scip {
             };
 
             let file_id = definition.file_id;
-            let Some(relative_path) = get_relative_filepath(&vfs, &root, file_id) else { continue };
+            let Some(relative_path) = get_relative_filepath(db, &root, file_id) else { continue };
             let line_index = get_line_index(db, file_id);
             let text_range = definition.range;
             if file_ids_emitted.contains(&file_id) {
@@ -330,11 +330,11 @@ fn compute_symbol_info(
 }
 
 fn get_relative_filepath(
-    vfs: &vfs::Vfs,
+    db: &RootDatabase,
     rootpath: &vfs::AbsPathBuf,
     file_id: ide::File,
 ) -> Option<String> {
-    Some(vfs.file_path(file_id).as_path()?.strip_prefix(rootpath)?.as_str().to_owned())
+    Some(file_id.path(db).as_path()?.strip_prefix(rootpath)?.as_str().to_owned())
 }
 
 fn get_line_index(db: &RootDatabase, file_id: File) -> LineIndex {

@@ -11,7 +11,7 @@ use std::{
 
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use hir::ChangeWithProcMacros;
-use ide::{Analysis, AnalysisHost, Cancellable, File, SourceRootId};
+use ide::{Analysis, AnalysisHost, Cancellable, File, RootDatabase, SourceRootId};
 use ide_db::base_db::{Crate, ProcMacroPaths, SourceDatabase};
 use itertools::Itertools;
 use load_cargo::SourceRootConfig;
@@ -339,17 +339,17 @@ impl GlobalState {
                 let mut bytes = vec![];
                 let mut modified_rust_files = vec![];
                 for file in changed_files.into_values() {
-                    let vfs_path = vfs.file_path(file.file_id);
+                    let vfs_path = file.file.path(&self.analysis_host.db);
                     if let Some(("rust-analyzer", Some("toml"))) = vfs_path.name_and_extension() {
                         // Remember ids to use them after `apply_changes`
-                        modified_ratoml_files.insert(file.file_id, (file.kind(), vfs_path.clone()));
+                        modified_ratoml_files.insert(file.file, (file.kind(), vfs_path.clone()));
                     }
 
                     if let Some(path) = vfs_path.as_path() {
                         has_structure_changes |= file.is_created_or_deleted();
 
                         if file.is_modified() && path.extension() == Some("rs") {
-                            modified_rust_files.push(file.file_id);
+                            modified_rust_files.push(file.file);
                         }
 
                         let additional_files = self
@@ -363,7 +363,7 @@ impl GlobalState {
                         let path = path.to_path_buf();
                         if file.is_created_or_deleted() {
                             workspace_structure_change.get_or_insert((path, false)).1 |=
-                                self.crate_graph_file_dependencies.contains(vfs_path);
+                                self.crate_graph_file_dependencies.contains(&vfs_path);
                         } else if reload::should_refresh_for_change(
                             &path,
                             file.kind(),
@@ -376,7 +376,7 @@ impl GlobalState {
 
                     // Clear native diagnostics when their file gets deleted
                     if !file.exists() {
-                        self.diagnostics.clear_native_for(file.file_id);
+                        self.diagnostics.clear_native_for(file.file);
                     }
 
                     let text = if let vfs::Change::Create(v, _) | vfs::Change::Modify(v, _) =
@@ -393,7 +393,7 @@ impl GlobalState {
                     };
                     // delay `line_endings_map` changes until we are done normalizing the text
                     // this allows delaying the re-acquisition of the write lock
-                    bytes.push((file.file_id, text));
+                    bytes.push((file.file, text));
                 }
                 let (vfs, line_endings_map) = &mut *RwLockUpgradableReadGuard::upgrade(guard);
                 bytes.into_iter().for_each(|(file_id, text)| {
@@ -407,7 +407,7 @@ impl GlobalState {
                     change.change_file(file_id, text);
                 });
                 if has_structure_changes {
-                    let roots = self.source_root_config.partition(vfs);
+                    let roots = self.source_root_config.partition(&self.analysis_host.db, vfs);
                     change.set_roots(roots);
                 }
                 (change, modified_rust_files, workspace_structure_change)
@@ -807,26 +807,26 @@ impl GlobalStateSnapshot {
         None
     }
 
-    pub(crate) fn file_exists(&self, file_id: File) -> bool {
-        self.vfs.read().0.exists(file_id)
+    pub(crate) fn file_exists(&self, file: File) -> bool {
+        self.vfs.read().0.exists(&file)
     }
 }
 
-pub(crate) fn file_id_to_url(vfs: &vfs::Vfs, id: File) -> Url {
-    let path = vfs.file_path(id);
+pub(crate) fn file_id_to_url(db: &RootDatabase, file: File) -> Url {
+    let path = file.path(db);
     let path = path.as_path().unwrap();
     url_from_abs_path(path)
 }
 
 /// Returns `None` if the file was excluded.
-pub(crate) fn url_to_file_id(vfs: &vfs::Vfs, url: &Url) -> anyhow::Result<Option<File>> {
+pub(crate) fn url_to_file_id(db: &RootDatabase, url: &Url) -> anyhow::Result<Option<File>> {
     let path = from_proto::vfs_path(url)?;
-    vfs_path_to_file_id(vfs, &path)
+    vfs_path_to_file_id(db, &path)
 }
 
 /// Returns `None` if the file was excluded.
 pub(crate) fn vfs_path_to_file_id(
-    vfs: &vfs::Vfs,
+    db: &RootDatabase,
     vfs_path: &VfsPath,
 ) -> anyhow::Result<Option<File>> {
     let (file_id, excluded) =

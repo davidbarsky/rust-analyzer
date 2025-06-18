@@ -68,7 +68,7 @@ impl flags::UnresolvedReferences {
             if !visited_files.contains(&file_id) {
                 let crate_name =
                     module.krate().display_name(db).as_deref().unwrap_or(&sym::unknown).to_owned();
-                let file_path = vfs.file_path(file_id);
+                let file_path = file_id.path(db);
                 eprintln!("processing crate: {crate_name}, module: {file_path}",);
 
                 let line_index = db.line_index(file_id);
@@ -135,10 +135,7 @@ fn find_unresolved_references(
     unresolved_references
 }
 
-fn all_unresolved_references(
-    sema: &Semantics<'_, RootDatabase>,
-    file_id: File,
-) -> Vec<TextRange> {
+fn all_unresolved_references(sema: &Semantics<'_, RootDatabase>, file_id: File) -> Vec<TextRange> {
     let file_id = sema
         .attach_first_edition(file_id)
         .unwrap_or_else(|| EditionedFileId::current_edition(sema.db, file_id));

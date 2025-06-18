@@ -805,8 +805,7 @@ impl flags::AnalysisStats {
                 let unknown_or_partial = if ty.is_unknown() {
                     num_exprs_unknown += 1;
                     if verbosity.is_spammy() {
-                        if let Some((path, start, end)) = expr_syntax_range(db, vfs, &sm(), expr_id)
-                        {
+                        if let Some((path, start, end)) = expr_syntax_range(db, &sm(), expr_id) {
                             bar.println(format!(
                                 "{} {}:{}-{}:{}: Unknown type",
                                 path,
@@ -833,7 +832,7 @@ impl flags::AnalysisStats {
                 };
                 if self.only.is_some() && verbosity.is_spammy() {
                     // in super-verbose mode for just one function, we print every single expression
-                    if let Some((_, start, end)) = expr_syntax_range(db, vfs, &sm(), expr_id) {
+                    if let Some((_, start, end)) = expr_syntax_range(db, &sm(), expr_id) {
                         bar.println(format!(
                             "{}:{}-{}:{}: {}",
                             start.line + 1,
@@ -852,15 +851,14 @@ impl flags::AnalysisStats {
                 if unknown_or_partial && self.output == Some(OutputFormat::Csv) {
                     println!(
                         r#"{},type,"{}""#,
-                        location_csv_expr(db, vfs, &sm(), expr_id),
+                        location_csv_expr(db, &sm(), expr_id),
                         ty.display(db, display_target)
                     );
                 }
                 if let Some(mismatch) = inference_result.type_mismatch_for_expr(expr_id) {
                     num_expr_type_mismatches += 1;
                     if verbosity.is_verbose() {
-                        if let Some((path, start, end)) = expr_syntax_range(db, vfs, &sm(), expr_id)
-                        {
+                        if let Some((path, start, end)) = expr_syntax_range(db, &sm(), expr_id) {
                             bar.println(format!(
                                 "{} {}:{}-{}:{}: Expected {}, got {}",
                                 path,
@@ -883,7 +881,7 @@ impl flags::AnalysisStats {
                     if self.output == Some(OutputFormat::Csv) {
                         println!(
                             r#"{},mismatch,"{}","{}""#,
-                            location_csv_expr(db, vfs, &sm(), expr_id),
+                            location_csv_expr(db, &sm(), expr_id),
                             mismatch.expected.display(db, display_target),
                             mismatch.actual.display(db, display_target)
                         );
@@ -910,7 +908,7 @@ impl flags::AnalysisStats {
                 let unknown_or_partial = if ty.is_unknown() {
                     num_pats_unknown += 1;
                     if verbosity.is_spammy() {
-                        if let Some((path, start, end)) = pat_syntax_range(db, vfs, &sm(), pat_id) {
+                        if let Some((path, start, end)) = pat_syntax_range(db, &sm(), pat_id) {
                             bar.println(format!(
                                 "{} {}:{}-{}:{}: Unknown type",
                                 path,
@@ -937,7 +935,7 @@ impl flags::AnalysisStats {
                 };
                 if self.only.is_some() && verbosity.is_spammy() {
                     // in super-verbose mode for just one function, we print every single pattern
-                    if let Some((_, start, end)) = pat_syntax_range(db, vfs, &sm(), pat_id) {
+                    if let Some((_, start, end)) = pat_syntax_range(db, &sm(), pat_id) {
                         bar.println(format!(
                             "{}:{}-{}:{}: {}",
                             start.line + 1,
@@ -956,14 +954,14 @@ impl flags::AnalysisStats {
                 if unknown_or_partial && self.output == Some(OutputFormat::Csv) {
                     println!(
                         r#"{},type,"{}""#,
-                        location_csv_pat(db, vfs, &sm(), pat_id),
+                        location_csv_pat(db, &sm(), pat_id),
                         ty.display(db, display_target)
                     );
                 }
                 if let Some(mismatch) = inference_result.type_mismatch_for_pat(pat_id) {
                     num_pat_type_mismatches += 1;
                     if verbosity.is_verbose() {
-                        if let Some((path, start, end)) = pat_syntax_range(db, vfs, &sm(), pat_id) {
+                        if let Some((path, start, end)) = pat_syntax_range(db, &sm(), pat_id) {
                             bar.println(format!(
                                 "{} {}:{}-{}:{}: Expected {}, got {}",
                                 path,
@@ -986,7 +984,7 @@ impl flags::AnalysisStats {
                     if self.output == Some(OutputFormat::Csv) {
                         println!(
                             r#"{},mismatch,"{}","{}""#,
-                            location_csv_pat(db, vfs, &sm(), pat_id),
+                            location_csv_pat(db, &sm(), pat_id),
                             mismatch.expected.display(db, display_target),
                             mismatch.actual.display(db, display_target)
                         );
@@ -1091,7 +1089,7 @@ impl flags::AnalysisStats {
                     };
                     if let Some(src) = source {
                         let original_file = src.file_id.original_file(db);
-                        let path = vfs.file_path(original_file.file_id(db));
+                        let path = original_file.file_id(db).path(db);
                         let syntax_range = src.text_range();
                         format!("processing: {} ({} {:?})", full_name(), path, syntax_range)
                     } else {
@@ -1213,7 +1211,7 @@ impl flags::AnalysisStats {
     }
 }
 
-fn location_csv_expr(db: &RootDatabase, vfs: &Vfs, sm: &BodySourceMap, expr_id: ExprId) -> String {
+fn location_csv_expr(db: &RootDatabase, sm: &BodySourceMap, expr_id: ExprId) -> String {
     let src = match sm.expr_syntax(expr_id) {
         Ok(s) => s,
         Err(SyntheticSyntax) => return "synthetic,,".to_owned(),
@@ -1221,7 +1219,7 @@ fn location_csv_expr(db: &RootDatabase, vfs: &Vfs, sm: &BodySourceMap, expr_id: 
     let root = db.parse_or_expand(src.file_id);
     let node = src.map(|e| e.to_node(&root).syntax().clone());
     let original_range = node.as_ref().original_file_range_rooted(db);
-    let path = vfs.file_path(original_range.file_id.file_id(db));
+    let path = original_range.file_id.file_id(db).path(db);
     let line_index = db.line_index(original_range.file_id.file_id(db));
     let text_range = original_range.range;
     let (start, end) =
@@ -1229,7 +1227,7 @@ fn location_csv_expr(db: &RootDatabase, vfs: &Vfs, sm: &BodySourceMap, expr_id: 
     format!("{path},{}:{},{}:{}", start.line + 1, start.col, end.line + 1, end.col)
 }
 
-fn location_csv_pat(db: &RootDatabase, vfs: &Vfs, sm: &BodySourceMap, pat_id: PatId) -> String {
+fn location_csv_pat(db: &RootDatabase, sm: &BodySourceMap, pat_id: PatId) -> String {
     let src = match sm.pat_syntax(pat_id) {
         Ok(s) => s,
         Err(SyntheticSyntax) => return "synthetic,,".to_owned(),
@@ -1237,7 +1235,7 @@ fn location_csv_pat(db: &RootDatabase, vfs: &Vfs, sm: &BodySourceMap, pat_id: Pa
     let root = db.parse_or_expand(src.file_id);
     let node = src.map(|e| e.to_node(&root).syntax().clone());
     let original_range = node.as_ref().original_file_range_rooted(db);
-    let path = vfs.file_path(original_range.file_id.file_id(db));
+    let path = original_range.file_id.file_id(db).path(db);
     let line_index = db.line_index(original_range.file_id.file_id(db));
     let text_range = original_range.range;
     let (start, end) =
@@ -1245,18 +1243,17 @@ fn location_csv_pat(db: &RootDatabase, vfs: &Vfs, sm: &BodySourceMap, pat_id: Pa
     format!("{path},{}:{},{}:{}", start.line + 1, start.col, end.line + 1, end.col)
 }
 
-fn expr_syntax_range<'a>(
+fn expr_syntax_range(
     db: &RootDatabase,
-    vfs: &'a Vfs,
     sm: &BodySourceMap,
     expr_id: ExprId,
-) -> Option<(&'a VfsPath, LineCol, LineCol)> {
+) -> Option<(VfsPath, LineCol, LineCol)> {
     let src = sm.expr_syntax(expr_id);
     if let Ok(src) = src {
         let root = db.parse_or_expand(src.file_id);
         let node = src.map(|e| e.to_node(&root).syntax().clone());
         let original_range = node.as_ref().original_file_range_rooted(db);
-        let path = vfs.file_path(original_range.file_id.file_id(db));
+        let path = original_range.file_id.file_id(db).path(db);
         let line_index = db.line_index(original_range.file_id.file_id(db));
         let text_range = original_range.range;
         let (start, end) =
@@ -1266,18 +1263,17 @@ fn expr_syntax_range<'a>(
         None
     }
 }
-fn pat_syntax_range<'a>(
+fn pat_syntax_range(
     db: &RootDatabase,
-    vfs: &'a Vfs,
     sm: &BodySourceMap,
     pat_id: PatId,
-) -> Option<(&'a VfsPath, LineCol, LineCol)> {
+) -> Option<(VfsPath, LineCol, LineCol)> {
     let src = sm.pat_syntax(pat_id);
     if let Ok(src) = src {
         let root = db.parse_or_expand(src.file_id);
         let node = src.map(|e| e.to_node(&root).syntax().clone());
         let original_range = node.as_ref().original_file_range_rooted(db);
-        let path = vfs.file_path(original_range.file_id.file_id(db));
+        let path = original_range.file_id.file_id(db).path(db);
         let line_index = db.line_index(original_range.file_id.file_id(db));
         let text_range = original_range.range;
         let (start, end) =

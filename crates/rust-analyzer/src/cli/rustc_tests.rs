@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use std::{cell::RefCell, fs::read_to_string, panic::AssertUnwindSafe, path::PathBuf};
 
 use hir::{ChangeWithProcMacros, Crate};
-use ide::{AnalysisHost, DiagnosticCode, DiagnosticsConfig};
+use ide::{AnalysisHost, DiagnosticCode, DiagnosticsConfig, RootDatabase};
 use ide_db::base_db;
 use itertools::Either;
 use profile::StopWatch;
@@ -105,8 +105,9 @@ impl Tester {
             with_proc_macro_server: ProcMacroServerChoice::Sysroot,
             prefill_caches: false,
         };
+        let db = RootDatabase::default();
         let (db, _vfs, _proc_macro) =
-            load_workspace(workspace, &cargo_config.extra_env, &load_cargo_config)?;
+            load_workspace(workspace, db, &cargo_config.extra_env, &load_cargo_config)?;
         let host = AnalysisHost::with_database(db);
         let db = host.raw_database();
         let krates = Crate::all(db);

@@ -467,7 +467,7 @@ fn reverse_fixups_(tt: &mut TopSubtree, undo_info: &[TopSubtree]) {
 #[cfg(test)]
 mod tests {
     use expect_test::{Expect, expect};
-    use span::{Edition, EditionedFileId, File};
+    use span::{EditionedFileId, File};
     use syntax::TextRange;
     use syntax_bridge::DocCommentDesugarMode;
     use triomphe::Arc;
@@ -508,7 +508,9 @@ mod tests {
     #[track_caller]
     fn check(#[rust_analyzer::rust_fixture] ra_fixture: &str, mut expect: Expect) {
         let parsed = syntax::SourceFile::parse(ra_fixture, span::Edition::CURRENT);
-        let span_map = SpanMap::RealSpanMap(Arc::new(RealSpanMap::absolute(EditionedFileId::from_raw_const(0))));
+        let span_map = SpanMap::RealSpanMap(Arc::new(RealSpanMap::absolute(
+            EditionedFileId::from_raw_const(0),
+        )));
         let fixups = super::fixup_syntax(
             span_map.as_ref(),
             &parsed.syntax_node(),

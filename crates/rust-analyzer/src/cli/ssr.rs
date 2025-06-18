@@ -33,7 +33,7 @@ impl flags::Ssr {
         }
         let edits = match_finder.edits();
         for (file_id, edit) in edits {
-            if let Some(path) = vfs.file_path(file_id).as_path() {
+            if let Some(path) = file_id.path(db).as_path() {
                 let mut contents = db.file_text(file_id).text(db).to_string();
                 edit.apply(&mut contents);
                 std::fs::write(path, contents)

@@ -65,7 +65,7 @@ impl flags::Diagnostics {
                     module.krate().display_name(db).as_deref().unwrap_or(&sym::unknown).to_owned();
                 println!(
                     "processing crate: {crate_name}, module: {}",
-                    _vfs.file_path(file_id.file_id(db))
+                    file_id.file_id(db).path(db)
                 );
                 for diagnostic in analysis
                     .full_diagnostics(

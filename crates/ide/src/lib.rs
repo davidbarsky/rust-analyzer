@@ -159,7 +159,7 @@ impl<T> RangeInfo<T> {
 /// `AnalysisHost` stores the current state of the world.
 #[derive(Debug)]
 pub struct AnalysisHost {
-    db: RootDatabase,
+    pub db: RootDatabase,
 }
 
 impl AnalysisHost {

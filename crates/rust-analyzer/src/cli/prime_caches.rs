@@ -5,6 +5,7 @@
 //! attempt to simulate the full IDE experience through the lifetime of the
 //! an editing session.
 
+use ide::RootDatabase;
 use load_cargo::{LoadCargoConfig, ProcMacroServerChoice, load_workspace};
 use profile::StopWatch;
 use project_model::{ProjectManifest, ProjectWorkspace};
@@ -44,7 +45,9 @@ impl flags::PrimeCaches {
         let root = ProjectManifest::discover_single(&root)?;
         let workspace = ProjectWorkspace::load(root, &cargo_config, &|_| {})?;
 
-        let (db, _, _) = load_workspace(workspace, &cargo_config.extra_env, &load_cargo_config)?;
+        let db = RootDatabase::default();
+        let (db, _, _) =
+            load_workspace(workspace, db, &cargo_config.extra_env, &load_cargo_config)?;
         let elapsed = stop_watch.elapsed();
         eprintln!(
             "Load time: {:?}ms, memory allocated: {}MB",
