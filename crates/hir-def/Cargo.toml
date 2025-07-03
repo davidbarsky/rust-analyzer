@@ -49,6 +49,7 @@ thin-vec = "0.2.14"
 
 [dev-dependencies]
 expect-test.workspace = true
+criterion = "0.5"
 
 # local deps
 test-utils.workspace = true
@@ -57,6 +58,10 @@ syntax-bridge.workspace = true
 
 [features]
 in-rust-tree = ["hir-expand/in-rust-tree"]
+
+[[bench]]
+name = "glob_imports"
+harness = false
 
 [lints]
 workspace = true
