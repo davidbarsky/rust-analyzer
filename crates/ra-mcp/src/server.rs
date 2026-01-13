@@ -846,7 +846,7 @@ impl ReachabilityBuilder {
             kind: nav.kind.map(SerializableSymbolKind::from),
             container_name: nav.container_name.as_ref().map(|name| name.as_str().to_owned()),
             description: nav.description.clone(),
-            docs: nav.docs.as_ref().map(|docs| docs.as_str().to_owned()),
+            docs: None,
             signature: nav.description.clone(),
             declaration: source.declaration,
             body: source.body,
