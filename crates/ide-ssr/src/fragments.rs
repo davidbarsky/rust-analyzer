@@ -12,6 +12,20 @@ pub(crate) fn ty(s: &str) -> Result<SyntaxNode, ()> {
     fragment::<ast::Type>("type T = {};", s)
 }
 
+pub(crate) fn ty_in_return(s: &str) -> Result<SyntaxNode, ()> {
+    let s = s.trim();
+    let input = format!("fn f() -> {} {{}}", s);
+    let parse = syntax::SourceFile::parse(&input, syntax::Edition::CURRENT);
+    if !parse.errors().is_empty() {
+        return Err(());
+    }
+    let node = parse.tree().syntax().descendants().find_map(ast::Type::cast).ok_or(())?;
+    if node.syntax().text() != s {
+        return Err(());
+    }
+    Ok(node.syntax().clone_subtree())
+}
+
 pub(crate) fn item(s: &str) -> Result<SyntaxNode, ()> {
     fragment::<ast::Item>("{}", s)
 }

@@ -2,12 +2,18 @@
 //! process of matching, placeholder values are recorded.
 
 use crate::{
-    SsrMatches,
-    parsing::{Constraint, NodeKind, Placeholder, Var},
+    SsrMatches, fragments,
+    parsing::{Constraint, ContextKind, NodeKind, Placeholder, Var, WhereClause, WhereCondition},
     resolving::{ResolvedPattern, ResolvedRule, UfcsCallInfo},
 };
-use hir::{FileRange, FindPathConfig, Semantics};
-use ide_db::{FxHashMap, base_db::all_crates};
+use hir::{
+    Access, CallableKind, FileRange, FindPathConfig, HirDisplay, ModuleDef, PathResolution,
+    Semantics, Trait,
+};
+use ide_db::{
+    FxHashMap,
+    base_db::{SourceDatabase, all_crates},
+};
 use std::{cell::Cell, iter::Peekable};
 use syntax::{
     SmolStr, SyntaxElement, SyntaxElementChildren, SyntaxKind, SyntaxNode, SyntaxToken,
@@ -115,6 +121,66 @@ enum Phase<'a> {
     Second(&'a mut Match),
 }
 
+enum ResolvedConstraintType<'db> {
+    Pattern(TypePattern<'db>),
+    Trait(Trait),
+}
+
+struct TraitBoundPattern<'db> {
+    trait_: Trait,
+    args: Vec<hir::Type<'db>>,
+    fn_sig: Option<FnTraitSignature<'db>>,
+}
+
+struct FnTraitSignature<'db> {
+    params: Vec<TypePattern<'db>>,
+    ret: Option<Box<TypePattern<'db>>>,
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+struct FnPtrQualifiers {
+    is_const: bool,
+    is_async: bool,
+    is_unsafe: bool,
+    abi: Option<SmolStr>,
+}
+
+enum TypePattern<'db> {
+    Resolved(hir::Type<'db>),
+    Adt {
+        adt: hir::Adt,
+        args: Vec<TypePattern<'db>>,
+    },
+    ImplTrait {
+        bounds: Vec<TraitBoundPattern<'db>>,
+    },
+    DynTrait {
+        bounds: Vec<TraitBoundPattern<'db>>,
+    },
+    FnPtr {
+        params: Vec<TypePattern<'db>>,
+        ret: Option<Box<TypePattern<'db>>>,
+        qualifiers: FnPtrQualifiers,
+    },
+    Ref {
+        mutable: bool,
+        inner: Box<TypePattern<'db>>,
+    },
+    RawPtr {
+        inner: Box<TypePattern<'db>>,
+    },
+    Slice {
+        inner: Box<TypePattern<'db>>,
+    },
+    Array {
+        inner: Box<TypePattern<'db>>,
+        len: Option<usize>,
+    },
+    Tuple {
+        items: Vec<TypePattern<'db>>,
+    },
+}
+
 impl<'db, 'sema> Matcher<'db, 'sema> {
     fn try_match(
         rule: &ResolvedRule<'db>,
@@ -145,6 +211,7 @@ impl<'db, 'sema> Matcher<'db, 'sema> {
             &rule.pattern.node,
             code,
         )?;
+        match_state.check_where_clause(&rule.where_clause, code, &the_match)?;
         the_match.depth = sema.ancestors_with_macros(the_match.matched_node.clone()).count();
         if let Some(template) = &rule.template {
             the_match.render_template_paths(template, sema)?;
@@ -173,8 +240,16 @@ impl<'db, 'sema> Matcher<'db, 'sema> {
     ) -> Result<(), MatchFailed> {
         // Handle placeholders.
         if let Some(placeholder) = self.get_placeholder_for_node(pattern) {
+            // Type constraints require inference, so they're deferred to the second pass along
+            // with the other expensive checks.
+            let check_types = match phase {
+                Phase::First => false,
+                Phase::Second(_) => true,
+            };
             for constraint in &placeholder.constraints {
-                self.check_constraint(constraint, code)?;
+                if check_types || !constraint.needs_type_inference() {
+                    self.check_constraint(constraint, code)?;
+                }
             }
             if let Phase::Second(matches_out) = phase {
                 let original_range = self
@@ -325,13 +400,708 @@ impl<'db, 'sema> Matcher<'db, 'sema> {
             Constraint::Kind(kind) => {
                 kind.matches(code)?;
             }
+            Constraint::Type(type_text) => {
+                self.check_type_constraint(code, type_text)?;
+            }
             Constraint::Not(sub) => {
                 if self.check_constraint(sub, code).is_ok() {
                     fail_match!("Constraint {:?} failed for '{}'", constraint, code.text());
                 }
             }
+            Constraint::Context(context_kind) => {
+                context_kind.matches(code)?;
+            }
         }
         Ok(())
+    }
+
+    fn check_where_clause(
+        &self,
+        where_clause: &WhereClause,
+        code: &SyntaxNode,
+        the_match: &Match,
+    ) -> Result<(), MatchFailed> {
+        for condition in &where_clause.conditions {
+            self.check_where_condition(condition, code, the_match)?;
+        }
+        Ok(())
+    }
+
+    fn check_where_condition(
+        &self,
+        condition: &WhereCondition,
+        code: &SyntaxNode,
+        the_match: &Match,
+    ) -> Result<(), MatchFailed> {
+        match condition {
+            WhereCondition::Kind(kind) => {
+                kind.matches(code)?;
+            }
+            WhereCondition::Type(type_text) => {
+                self.check_type_constraint(code, type_text)?;
+            }
+            WhereCondition::Context(context_kind) => {
+                context_kind.matches(code)?;
+            }
+            WhereCondition::Not(inner) => {
+                if self.check_where_condition(inner, code, the_match).is_ok() {
+                    fail_match!("not() condition was satisfied but shouldn't be");
+                }
+            }
+            WhereCondition::Or(alternatives) => {
+                let mut any_matched = false;
+                for alt in alternatives {
+                    if self.check_where_condition(alt, code, the_match).is_ok() {
+                        any_matched = true;
+                        break;
+                    }
+                }
+                if !any_matched {
+                    fail_match!("None of the or() alternatives matched");
+                }
+            }
+            WhereCondition::PlaceholderOneOf { placeholder, values } => {
+                let placeholder_match =
+                    the_match.placeholder_values.get(placeholder).ok_or_else(|| {
+                        match_error!("Placeholder {} not found in match", placeholder)
+                    })?;
+                let file_id = placeholder_match.range.file_id.file_id(self.sema.db);
+                let file_text = self.sema.db.file_text(file_id).text(self.sema.db);
+                let matched_text = &file_text[placeholder_match.range.range];
+                if !values.iter().any(|v| v.as_str() == matched_text) {
+                    fail_match!(
+                        "Placeholder {} matched '{}', expected one of {:?}",
+                        placeholder,
+                        matched_text,
+                        values
+                    );
+                }
+            }
+            WhereCondition::PlaceholderEq { placeholder, value } => {
+                let placeholder_match =
+                    the_match.placeholder_values.get(placeholder).ok_or_else(|| {
+                        match_error!("Placeholder {} not found in match", placeholder)
+                    })?;
+                let file_id = placeholder_match.range.file_id.file_id(self.sema.db);
+                let file_text = self.sema.db.file_text(file_id).text(self.sema.db);
+                let matched_text = &file_text[placeholder_match.range.range];
+                if matched_text != value.as_str() {
+                    fail_match!(
+                        "Placeholder {} matched '{}', expected '{}'",
+                        placeholder,
+                        matched_text,
+                        value
+                    );
+                }
+            }
+            WhereCondition::PlaceholderMutSelf { placeholder } => {
+                self.check_method_self_param(code, the_match, placeholder, Access::Exclusive)?;
+            }
+            WhereCondition::PlaceholderRefSelf { placeholder } => {
+                self.check_method_self_param(code, the_match, placeholder, Access::Shared)?;
+            }
+            WhereCondition::PlaceholderOwnedSelf { placeholder } => {
+                self.check_method_self_param(code, the_match, placeholder, Access::Owned)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Checks that the method call in `code` has the expected self parameter access kind.
+    /// The `placeholder` is used to verify which method we're checking (for error messages).
+    fn check_method_self_param(
+        &self,
+        code: &SyntaxNode,
+        the_match: &Match,
+        placeholder: &Var,
+        expected_access: Access,
+    ) -> Result<(), MatchFailed> {
+        let placeholder_match = the_match
+            .placeholder_values
+            .get(placeholder)
+            .ok_or_else(|| match_error!("Placeholder {} not found in match", placeholder))?;
+
+        let file_id = placeholder_match.range.file_id.file_id(self.sema.db);
+        let file_text = self.sema.db.file_text(file_id).text(self.sema.db);
+        let method_name = &file_text[placeholder_match.range.range];
+
+        let method_call = ast::MethodCallExpr::cast(code.clone()).ok_or_else(|| {
+            match_error!("Expected method call for self parameter check, found {:?}", code.kind())
+        })?;
+
+        let function = self
+            .sema
+            .resolve_method_call(&method_call)
+            .ok_or_else(|| match_error!("Failed to resolve method call `{}`", method_name))?;
+
+        let self_param = function
+            .self_param(self.sema.db)
+            .ok_or_else(|| match_error!("Method `{}` has no self parameter", method_name))?;
+
+        let actual_access = self_param.access(self.sema.db);
+        if actual_access != expected_access {
+            let expected_str = match expected_access {
+                Access::Exclusive => "&mut self",
+                Access::Shared => "&self",
+                Access::Owned => "self",
+            };
+            let actual_str = match actual_access {
+                Access::Exclusive => "&mut self",
+                Access::Shared => "&self",
+                Access::Owned => "self",
+            };
+            fail_match!(
+                "Method `{}` takes `{}`, expected `{}`",
+                method_name,
+                actual_str,
+                expected_str
+            );
+        }
+
+        Ok(())
+    }
+
+    fn check_type_constraint(
+        &self,
+        code: &SyntaxNode,
+        type_text: &SmolStr,
+    ) -> Result<(), MatchFailed> {
+        let resolved = self.resolve_constraint_type(code, type_text)?;
+        let node_type = if let Some(expr) = ast::Expr::cast(code.clone()) {
+            self.sema
+                .type_of_expr(&expr)
+                .ok_or_else(|| {
+                    match_error!("Failed to get type for expression `{}`", expr.syntax().text())
+                })?
+                .original
+        } else if let Some(pat) = ast::Pat::cast(code.clone()) {
+            self.sema
+                .type_of_pat(&pat)
+                .ok_or_else(|| {
+                    match_error!("Failed to get type for pattern `{}`", pat.syntax().text())
+                })?
+                .original
+        } else {
+            fail_match!("type() constraints require expression or pattern, got {:?}", code.kind());
+        };
+        let krate = self.sema.scope(code).map(|it| it.krate()).unwrap_or_else(|| {
+            hir::Crate::from(*all_crates(self.sema.db).last().expect("no crate graph present"))
+        });
+        let display_target = krate.to_display_target(self.sema.db);
+        match resolved {
+            ResolvedConstraintType::Pattern(pattern) => {
+                if !self.matches_type_pattern(&node_type, &pattern) {
+                    fail_match!(
+                        "Type `{}` did not match `{}`",
+                        node_type.display(self.sema.db, display_target),
+                        type_text
+                    );
+                }
+            }
+            ResolvedConstraintType::Trait(trait_) => {
+                if !node_type.impls_trait(self.sema.db, trait_, &[]) {
+                    let trait_name = trait_.name(self.sema.db);
+                    let trait_name = trait_name.display(self.sema.db, krate.edition(self.sema.db));
+                    fail_match!(
+                        "Type `{}` does not implement `{}`",
+                        node_type.display(self.sema.db, display_target),
+                        trait_name
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn resolve_constraint_type(
+        &self,
+        code: &SyntaxNode,
+        type_text: &str,
+    ) -> Result<ResolvedConstraintType<'db>, MatchFailed> {
+        let type_node =
+            fragments::ty(type_text).map_err(|_| match_error!("Invalid type `{type_text}`"))?;
+        let ty =
+            ast::Type::cast(type_node).ok_or_else(|| match_error!("Invalid type `{type_text}`"))?;
+        let scope = self.sema.scope(code).ok_or_else(|| match_error!("No scope for node"))?;
+
+        if let ast::Type::PathType(path_ty) = &ty
+            && let Some(path) = path_ty.path()
+            && let Some(resolution) = scope.speculative_resolve(&path)
+        {
+            return match resolution {
+                PathResolution::Def(ModuleDef::Trait(trait_)) => {
+                    Ok(ResolvedConstraintType::Trait(trait_))
+                }
+                _ => Ok(ResolvedConstraintType::Pattern(self.type_pattern_from_ast(&scope, &ty)?)),
+            };
+        }
+
+        Ok(ResolvedConstraintType::Pattern(self.type_pattern_from_ast(&scope, &ty)?))
+    }
+
+    fn type_pattern_from_ast(
+        &self,
+        scope: &hir::SemanticsScope<'db>,
+        ty: &ast::Type,
+    ) -> Result<TypePattern<'db>, MatchFailed> {
+        match ty {
+            ast::Type::ParenType(paren) => {
+                let inner = paren.ty().ok_or_else(|| match_error!("Invalid type"))?;
+                self.type_pattern_from_ast(scope, &inner)
+            }
+            ast::Type::PathType(path_ty) => {
+                let path = path_ty.path().ok_or_else(|| match_error!("Invalid type"))?;
+                let arg_types = collect_type_args(&path)?;
+                let mut args = Vec::new();
+                for arg_ty in arg_types {
+                    args.push(self.type_pattern_from_ast(scope, &arg_ty)?);
+                }
+                let resolution = scope
+                    .speculative_resolve(&path)
+                    .ok_or_else(|| match_error!("Failed to resolve type"))?;
+                match resolution {
+                    PathResolution::Def(ModuleDef::Adt(adt)) => Ok(TypePattern::Adt { adt, args }),
+                    PathResolution::Def(ModuleDef::TypeAlias(alias)) => {
+                        if !args.is_empty() {
+                            fail_match!("Unsupported type arguments");
+                        }
+                        // `instantiate_with_errors` moves the type out of the alias's generic
+                        // context; types owned by a definition cannot be unified with types
+                        // from the matched code's inference context.
+                        Ok(TypePattern::Resolved(alias.ty(self.sema.db).instantiate_with_errors()))
+                    }
+                    PathResolution::Def(ModuleDef::BuiltinType(builtin)) => {
+                        if !args.is_empty() {
+                            fail_match!("Unsupported type arguments");
+                        }
+                        Ok(TypePattern::Resolved(builtin.ty(self.sema.db)))
+                    }
+                    PathResolution::SelfType(impl_def) => {
+                        if !args.is_empty() {
+                            fail_match!("Unsupported type arguments");
+                        }
+                        Ok(TypePattern::Resolved(
+                            impl_def.self_ty(self.sema.db).instantiate_with_errors(),
+                        ))
+                    }
+                    PathResolution::Def(ModuleDef::Trait(_)) => {
+                        fail_match!("Trait types are not supported here");
+                    }
+                    _ => fail_match!("Unsupported type"),
+                }
+            }
+            ast::Type::ImplTraitType(impl_ty) => {
+                let bounds = impl_ty
+                    .type_bound_list()
+                    .ok_or_else(|| match_error!("Invalid impl trait bounds"))?;
+                Ok(TypePattern::ImplTrait { bounds: self.trait_bounds_from_list(scope, &bounds)? })
+            }
+            ast::Type::DynTraitType(dyn_ty) => {
+                let bounds = dyn_ty
+                    .type_bound_list()
+                    .ok_or_else(|| match_error!("Invalid dyn trait bounds"))?;
+                Ok(TypePattern::DynTrait { bounds: self.trait_bounds_from_list(scope, &bounds)? })
+            }
+            ast::Type::FnPtrType(fn_ptr) => {
+                let qualifiers = FnPtrQualifiers {
+                    is_const: fn_ptr.const_token().is_some(),
+                    is_async: fn_ptr.async_token().is_some(),
+                    is_unsafe: fn_ptr.unsafe_token().is_some(),
+                    abi: fn_ptr.abi().and_then(abi_string),
+                };
+                let param_list = fn_ptr.param_list().ok_or_else(|| match_error!("Invalid fn"))?;
+                if param_list.self_param().is_some() {
+                    fail_match!("Unsupported fn pointer self param");
+                }
+                let mut params = Vec::new();
+                for param in param_list.params() {
+                    if param.dotdotdot_token().is_some() {
+                        fail_match!("Unsupported variadic fn pointer");
+                    }
+                    let param_ty = param.ty().ok_or_else(|| match_error!("Invalid fn param"))?;
+                    params.push(self.type_pattern_from_ast(scope, &param_ty)?);
+                }
+                let ret = match fn_ptr.ret_type().and_then(|ret| ret.ty()) {
+                    Some(ret_ty) => Some(Box::new(self.type_pattern_from_ast(scope, &ret_ty)?)),
+                    None => None,
+                };
+                Ok(TypePattern::FnPtr { params, ret, qualifiers })
+            }
+            ast::Type::RefType(ref_ty) => {
+                let inner = ref_ty.ty().ok_or_else(|| match_error!("Invalid type"))?;
+                Ok(TypePattern::Ref {
+                    mutable: ref_ty.mut_token().is_some(),
+                    inner: Box::new(self.type_pattern_from_ast(scope, &inner)?),
+                })
+            }
+            ast::Type::PtrType(ptr_ty) => {
+                let inner = ptr_ty.ty().ok_or_else(|| match_error!("Invalid type"))?;
+                Ok(TypePattern::RawPtr {
+                    inner: Box::new(self.type_pattern_from_ast(scope, &inner)?),
+                })
+            }
+            ast::Type::SliceType(slice_ty) => {
+                let inner = slice_ty.ty().ok_or_else(|| match_error!("Invalid type"))?;
+                Ok(TypePattern::Slice {
+                    inner: Box::new(self.type_pattern_from_ast(scope, &inner)?),
+                })
+            }
+            ast::Type::ArrayType(array_ty) => {
+                let inner = array_ty.ty().ok_or_else(|| match_error!("Invalid type"))?;
+                let len = array_ty
+                    .const_arg()
+                    .and_then(|arg| arg.expr())
+                    .and_then(|expr| parse_usize_literal(&expr));
+                Ok(TypePattern::Array {
+                    inner: Box::new(self.type_pattern_from_ast(scope, &inner)?),
+                    len,
+                })
+            }
+            ast::Type::TupleType(tuple_ty) => {
+                let mut items = Vec::new();
+                for item in tuple_ty.fields() {
+                    items.push(self.type_pattern_from_ast(scope, &item)?);
+                }
+                Ok(TypePattern::Tuple { items })
+            }
+            _ => fail_match!("Unsupported type"),
+        }
+    }
+
+    fn type_from_ast(
+        &self,
+        scope: &hir::SemanticsScope<'db>,
+        ty: &ast::Type,
+    ) -> Result<hir::Type<'db>, MatchFailed> {
+        match ty {
+            ast::Type::ParenType(paren) => {
+                let inner = paren.ty().ok_or_else(|| match_error!("Invalid type"))?;
+                self.type_from_ast(scope, &inner)
+            }
+            ast::Type::PathType(path_ty) => {
+                let path = path_ty.path().ok_or_else(|| match_error!("Invalid type"))?;
+                let arg_types = collect_type_args(&path)?;
+                let mut args = Vec::new();
+                for arg_ty in arg_types {
+                    args.push(self.type_from_ast(scope, &arg_ty)?);
+                }
+                let resolution = scope
+                    .speculative_resolve(&path)
+                    .ok_or_else(|| match_error!("Failed to resolve type"))?;
+                match resolution {
+                    PathResolution::Def(ModuleDef::Adt(adt)) => {
+                        Ok(adt.ty(self.sema.db).instantiate(args).instantiate_with_errors())
+                    }
+                    PathResolution::Def(ModuleDef::TypeAlias(alias)) => {
+                        if !args.is_empty() {
+                            fail_match!("Unsupported type arguments");
+                        }
+                        Ok(alias.ty(self.sema.db).instantiate_with_errors())
+                    }
+                    PathResolution::Def(ModuleDef::BuiltinType(builtin)) => {
+                        if !args.is_empty() {
+                            fail_match!("Unsupported type arguments");
+                        }
+                        Ok(builtin.ty(self.sema.db))
+                    }
+                    PathResolution::SelfType(impl_def) => {
+                        if !args.is_empty() {
+                            fail_match!("Unsupported type arguments");
+                        }
+                        Ok(impl_def.self_ty(self.sema.db).instantiate_with_errors())
+                    }
+                    _ => fail_match!("Unsupported type"),
+                }
+            }
+            ast::Type::TupleType(tuple_ty) => {
+                let mut items = Vec::new();
+                for item in tuple_ty.fields() {
+                    items.push(self.type_from_ast(scope, &item)?);
+                }
+                Ok(hir::Type::new_tuple(self.sema.db, &items))
+            }
+            ast::Type::SliceType(slice_ty) => {
+                let inner = slice_ty.ty().ok_or_else(|| match_error!("Invalid type"))?;
+                Ok(hir::Type::new_slice(self.sema.db, self.type_from_ast(scope, &inner)?))
+            }
+            _ => fail_match!("Unsupported type"),
+        }
+    }
+
+    fn trait_bounds_from_list(
+        &self,
+        scope: &hir::SemanticsScope<'db>,
+        bounds: &ast::TypeBoundList,
+    ) -> Result<Vec<TraitBoundPattern<'db>>, MatchFailed> {
+        let mut patterns = Vec::new();
+        for bound in bounds.bounds() {
+            let (for_binder, path_ty) = match bound.kind() {
+                Some(ast::TypeBoundKind::PathType(for_binder, path_ty)) => (for_binder, path_ty),
+                Some(ast::TypeBoundKind::Lifetime(_)) => {
+                    fail_match!("Unsupported lifetime bound");
+                }
+                Some(ast::TypeBoundKind::Use(_)) => {
+                    fail_match!("Unsupported use bound");
+                }
+                None => fail_match!("Invalid trait bound"),
+            };
+            if for_binder.is_some() {
+                fail_match!("Unsupported for<...> bound");
+            }
+            let path = path_ty.path().ok_or_else(|| match_error!("Invalid trait bound"))?;
+            let segment = path.segment().ok_or_else(|| match_error!("Invalid trait bound"))?;
+            if segment.generic_arg_list().is_some() && segment.parenthesized_arg_list().is_some() {
+                fail_match!("Unsupported trait bound arguments");
+            }
+            let arg_types = if segment.parenthesized_arg_list().is_some() {
+                Vec::new()
+            } else {
+                collect_type_args(&path)?
+            };
+            let mut args = Vec::new();
+            for arg_ty in arg_types {
+                args.push(self.type_from_ast(scope, &arg_ty)?);
+            }
+            let fn_sig = if let Some(parenthesized) = segment.parenthesized_arg_list() {
+                let mut params = Vec::new();
+                for arg in parenthesized.type_args() {
+                    let param_ty = arg.ty().ok_or_else(|| match_error!("Invalid fn trait arg"))?;
+                    params.push(self.type_pattern_from_ast(scope, &param_ty)?);
+                }
+                let ret = segment
+                    .ret_type()
+                    .and_then(|ret| ret.ty())
+                    .map(|ret| self.type_pattern_from_ast(scope, &ret))
+                    .transpose()?
+                    .map(Box::new);
+                Some(FnTraitSignature { params, ret })
+            } else {
+                None
+            };
+            let trait_ = match scope.speculative_resolve(&path) {
+                Some(PathResolution::Def(ModuleDef::Trait(trait_))) => trait_,
+                _ => {
+                    let name = segment
+                        .name_ref()
+                        .map(|name| name.text().to_string())
+                        .ok_or_else(|| match_error!("Failed to resolve trait"))?;
+                    fn_trait_from_name(self.sema.db, scope.krate(), &name)
+                        .ok_or_else(|| match_error!("Failed to resolve trait"))?
+                }
+            };
+            patterns.push(TraitBoundPattern { trait_, args, fn_sig });
+        }
+        Ok(patterns)
+    }
+
+    fn matches_type_pattern(&self, expr_type: &hir::Type<'db>, pattern: &TypePattern<'db>) -> bool {
+        match pattern {
+            TypePattern::Resolved(pattern_type) => {
+                expr_type.could_unify_with(self.sema.db, pattern_type)
+            }
+            TypePattern::Adt { adt, args } => {
+                let Some(expr_adt) = expr_type.as_adt() else {
+                    return false;
+                };
+                if &expr_adt != adt {
+                    return false;
+                }
+                if args.is_empty() {
+                    return true;
+                }
+                let expr_args: Vec<_> = expr_type.type_arguments().collect();
+                if expr_args.len() != args.len() {
+                    return false;
+                }
+                expr_args
+                    .iter()
+                    .zip(args)
+                    .all(|(arg, pattern)| self.matches_type_pattern(arg, pattern))
+            }
+            TypePattern::ImplTrait { bounds } => {
+                let Some(impl_traits) = expr_type.as_impl_traits(self.sema.db) else {
+                    return false;
+                };
+                let impl_traits: Vec<_> = impl_traits.collect();
+                self.matches_trait_bounds(expr_type, bounds, Some(&impl_traits))
+            }
+            TypePattern::DynTrait { bounds } => {
+                let Some(dyn_trait) = expr_type.as_dyn_trait() else {
+                    return false;
+                };
+                if !bounds.is_empty() && !bounds.iter().any(|bound| bound.trait_ == dyn_trait) {
+                    return false;
+                }
+                self.matches_trait_bounds(expr_type, bounds, None)
+            }
+            TypePattern::FnPtr { params, ret, qualifiers } => {
+                let Some(callable) = expr_type.as_callable(self.sema.db) else {
+                    return false;
+                };
+                let mut actual_ret = callable.return_type();
+                match callable.kind() {
+                    CallableKind::Function(function) => {
+                        if qualifiers.is_async != function.is_async(self.sema.db) {
+                            return false;
+                        }
+                        if qualifiers.is_const != function.is_const(self.sema.db) {
+                            return false;
+                        }
+                        if qualifiers.is_unsafe != function.is_unsafe(self.sema.db) {
+                            return false;
+                        }
+                        match qualifiers.is_async {
+                            true => match function.async_ret_type(self.sema.db) {
+                                Some(async_ret) => actual_ret = async_ret,
+                                None => (),
+                            },
+                            false => (),
+                        }
+                        let expected_abi = qualifiers.abi.as_deref();
+                        let actual_abi = function.abi(self.sema.db);
+                        match (expected_abi, actual_abi) {
+                            (None, None) => {}
+                            (Some(expected), Some(actual)) if actual.as_str() == expected => {}
+                            (Some(_), None) | (None, Some(_)) | (Some(_), Some(_)) => {
+                                return false;
+                            }
+                        }
+                    }
+                    CallableKind::FnPtr => {
+                        if qualifiers != &FnPtrQualifiers::default() {
+                            return false;
+                        }
+                    }
+                    _ => return false,
+                }
+                let actual_params = callable.params();
+                if actual_params.len() != params.len() {
+                    return false;
+                }
+                if !actual_params
+                    .iter()
+                    .zip(params)
+                    .all(|(param, pattern)| self.matches_type_pattern(param.ty(), pattern))
+                {
+                    return false;
+                }
+                match ret {
+                    Some(ret) => self.matches_type_pattern(&actual_ret, ret),
+                    None => actual_ret.is_unit(),
+                }
+            }
+            TypePattern::Ref { mutable, inner } => {
+                let Some((inner_ty, mutability)) = expr_type.as_reference() else {
+                    return false;
+                };
+                if *mutable != matches!(mutability, hir::Mutability::Mut) {
+                    return false;
+                }
+                self.matches_type_pattern(&inner_ty, inner)
+            }
+            TypePattern::RawPtr { inner } => {
+                if !expr_type.is_raw_ptr() {
+                    return false;
+                }
+                let Some(inner_ty) = expr_type.remove_raw_ptr() else {
+                    return false;
+                };
+                self.matches_type_pattern(&inner_ty, inner)
+            }
+            TypePattern::Slice { inner } => {
+                let Some(inner_ty) = expr_type.as_slice() else {
+                    return false;
+                };
+                self.matches_type_pattern(&inner_ty, inner)
+            }
+            TypePattern::Array { inner, len } => {
+                let Some((inner_ty, actual_len)) = expr_type.as_array(self.sema.db) else {
+                    return false;
+                };
+                if let Some(len) = len
+                    && *len != actual_len
+                {
+                    return false;
+                }
+                self.matches_type_pattern(&inner_ty, inner)
+            }
+            TypePattern::Tuple { items } => {
+                if !expr_type.is_tuple() {
+                    return false;
+                }
+                let fields = expr_type.tuple_fields(self.sema.db);
+                if fields.len() != items.len() {
+                    return false;
+                }
+                fields.iter().zip(items).all(|(field, item)| self.matches_type_pattern(field, item))
+            }
+        }
+    }
+
+    fn matches_trait_bounds(
+        &self,
+        expr_type: &hir::Type<'db>,
+        bounds: &[TraitBoundPattern<'db>],
+        expected: Option<&[Trait]>,
+    ) -> bool {
+        bounds.iter().all(|bound| {
+            if let Some(expected) = expected {
+                let expected_has_exact = expected.iter().any(|trait_| trait_ == &bound.trait_);
+                if bound.fn_sig.is_some() {
+                    if !expected_has_exact {
+                        let expected_has_related = if is_fn_trait(self.sema.db, bound.trait_) {
+                            expected.iter().any(|trait_| is_fn_trait(self.sema.db, *trait_))
+                        } else if is_async_fn_trait(self.sema.db, bound.trait_) {
+                            expected.iter().any(|trait_| is_async_fn_trait(self.sema.db, *trait_))
+                        } else {
+                            false
+                        };
+                        if !expected_has_related {
+                            return false;
+                        }
+                    }
+                } else if !expected_has_exact {
+                    return false;
+                }
+            }
+            if bound.fn_sig.is_none()
+                && !expr_type.impls_trait(self.sema.db, bound.trait_, &bound.args)
+            {
+                return false;
+            }
+            if let Some(fn_sig) = &bound.fn_sig {
+                if !is_fn_trait(self.sema.db, bound.trait_) {
+                    return false;
+                }
+                let Some(callable) = expr_type.as_callable(self.sema.db) else {
+                    return false;
+                };
+                let mut actual_ret = callable.return_type();
+                if is_async_fn_trait(self.sema.db, bound.trait_)
+                    && let CallableKind::Function(function) = callable.kind()
+                    && let Some(async_ret) = function.async_ret_type(self.sema.db)
+                {
+                    actual_ret = async_ret;
+                }
+                let actual_params = callable.params();
+                if actual_params.len() != fn_sig.params.len() {
+                    return false;
+                }
+                if !actual_params
+                    .iter()
+                    .zip(&fn_sig.params)
+                    .all(|(param, pattern)| self.matches_type_pattern(param.ty(), pattern))
+                {
+                    return false;
+                }
+                match &fn_sig.ret {
+                    Some(ret) => self.matches_type_pattern(&actual_ret, ret),
+                    None => actual_ret.is_unit(),
+                }
+            } else {
+                true
+            }
+        })
     }
 
     /// Paths are matched based on whether they refer to the same thing, even if they're written
@@ -645,8 +1415,96 @@ impl<'db, 'sema> Matcher<'db, 'sema> {
     }
 
     fn get_placeholder(&self, element: &SyntaxElement) -> Option<&Placeholder> {
-        only_ident(element.clone()).and_then(|ident| self.rule.get_placeholder(&ident))
+        // Try as normal placeholder (IDENT)
+        if let Some(placeholder) =
+            only_ident(element.clone()).and_then(|ident| self.rule.get_placeholder(&ident))
+        {
+            return Some(placeholder);
+        }
+        // Try as lifetime placeholder (LIFETIME)
+        if let Some(placeholder) = only_lifetime(element.clone())
+            .and_then(|lifetime| self.rule.get_lifetime_placeholder(&lifetime))
+        {
+            return Some(placeholder);
+        }
+        None
     }
+}
+
+fn parse_usize_literal(expr: &ast::Expr) -> Option<usize> {
+    let literal = ast::Literal::cast(expr.syntax().clone())?;
+    let token = literal.token();
+    let text = token.text();
+    if text.starts_with('-') {
+        return None;
+    }
+    text.parse().ok()
+}
+
+fn abi_string(abi: ast::Abi) -> Option<SmolStr> {
+    if let Some(token) = abi.string_token() {
+        let text = token.text();
+        Some(text.trim_matches('"').into())
+    } else {
+        Some("C".into())
+    }
+}
+
+fn is_async_fn_trait(db: &dyn hir::db::HirDatabase, trait_: Trait) -> bool {
+    matches!(trait_.name(db).as_str(), "AsyncFn" | "AsyncFnMut" | "AsyncFnOnce")
+}
+
+fn is_fn_trait(db: &dyn hir::db::HirDatabase, trait_: Trait) -> bool {
+    matches!(
+        trait_.name(db).as_str(),
+        "Fn" | "FnMut" | "FnOnce" | "AsyncFn" | "AsyncFnMut" | "AsyncFnOnce"
+    )
+}
+
+fn fn_trait_from_name(
+    db: &dyn hir::db::HirDatabase,
+    krate: hir::Crate,
+    name: &str,
+) -> Option<Trait> {
+    let fn_trait = match name {
+        "FnOnce" => hir::FnTrait::FnOnce,
+        "FnMut" => hir::FnTrait::FnMut,
+        "Fn" => hir::FnTrait::Fn,
+        "AsyncFnOnce" => hir::FnTrait::AsyncFnOnce,
+        "AsyncFnMut" => hir::FnTrait::AsyncFnMut,
+        "AsyncFn" => hir::FnTrait::AsyncFn,
+        _ => return None,
+    };
+    fn_trait.get_id(db, krate)
+}
+
+fn collect_type_args(path: &ast::Path) -> Result<Vec<ast::Type>, MatchFailed> {
+    let mut segments: Vec<_> = path.segments().collect();
+    let Some(last) = segments.pop() else {
+        return Ok(Vec::new());
+    };
+    for segment in segments {
+        if segment.generic_arg_list().is_some() || segment.parenthesized_arg_list().is_some() {
+            fail_match!("Unsupported type arguments");
+        }
+    }
+    if last.parenthesized_arg_list().is_some() {
+        fail_match!("Unsupported type arguments");
+    }
+    let Some(arg_list) = last.generic_arg_list() else {
+        return Ok(Vec::new());
+    };
+    let mut out = Vec::new();
+    for arg in arg_list.generic_args() {
+        match arg {
+            ast::GenericArg::TypeArg(arg) => {
+                let ty = arg.ty().ok_or_else(|| match_error!("Invalid type argument"))?;
+                out.push(ty);
+            }
+            _ => fail_match!("Unsupported type arguments"),
+        }
+    }
+    Ok(out)
 }
 
 impl Match {
@@ -738,6 +1596,17 @@ impl PlaceholderMatch {
     }
 }
 
+impl Constraint {
+    fn needs_type_inference(&self) -> bool {
+        match self {
+            Constraint::Kind(_) => false,
+            Constraint::Context(_) => false,
+            Constraint::Type(_) => true,
+            Constraint::Not(inner) => inner.needs_type_inference(),
+        }
+    }
+}
+
 impl NodeKind {
     fn matches(&self, node: &SyntaxNode) -> Result<(), MatchFailed> {
         let ok = match self {
@@ -745,6 +1614,9 @@ impl NodeKind {
                 cov_mark::hit!(literal_constraint);
                 ast::Literal::can_cast(node.kind())
             }
+            Self::FieldExpr => ast::FieldExpr::can_cast(node.kind()),
+            Self::MethodCall => ast::MethodCallExpr::can_cast(node.kind()),
+            Self::CallExpr => ast::CallExpr::can_cast(node.kind()),
         };
         if !ok {
             fail_match!("Code '{}' isn't of kind {:?}", node.text(), self);
@@ -753,7 +1625,42 @@ impl NodeKind {
     }
 }
 
-// If `node` contains nothing but an ident then return it, otherwise return None.
+impl ContextKind {
+    fn matches(&self, node: &SyntaxNode) -> Result<(), MatchFailed> {
+        let Some(parent) = node.parent() else {
+            fail_match!("Code '{}' has no parent for context check {:?}", node.text(), self);
+        };
+        let ok = match self {
+            Self::Receiver => {
+                if let Some(method_call) = ast::MethodCallExpr::cast(parent) {
+                    method_call.receiver().is_some_and(|receiver| receiver.syntax() == node)
+                } else {
+                    false
+                }
+            }
+            Self::Argument => {
+                if let Some(arg_list) = ast::ArgList::cast(parent) {
+                    arg_list.args().any(|arg| arg.syntax() == node)
+                } else {
+                    false
+                }
+            }
+            Self::Lhs => {
+                if let Some(bin_expr) = ast::BinExpr::cast(parent) {
+                    bin_expr.op_kind() == Some(ast::BinaryOp::Assignment { op: None })
+                        && bin_expr.lhs().is_some_and(|lhs| lhs.syntax() == node)
+                } else {
+                    false
+                }
+            }
+        };
+        if !ok {
+            fail_match!("Code '{}' is not in context {:?}", node.text(), self);
+        }
+        Ok(())
+    }
+}
+
 fn only_ident(element: SyntaxElement) -> Option<SyntaxToken> {
     match element {
         SyntaxElement::Token(t) => {
@@ -765,6 +1672,23 @@ fn only_ident(element: SyntaxElement) -> Option<SyntaxToken> {
             let mut children = n.children_with_tokens();
             if let (Some(only_child), None) = (children.next(), children.next()) {
                 return only_ident(only_child);
+            }
+        }
+    }
+    None
+}
+
+fn only_lifetime(element: SyntaxElement) -> Option<SyntaxToken> {
+    match element {
+        SyntaxElement::Token(t) => {
+            if t.kind() == SyntaxKind::LIFETIME {
+                return Some(t);
+            }
+        }
+        SyntaxElement::Node(n) => {
+            let mut children = n.children_with_tokens();
+            if let (Some(only_child), None) = (children.next(), children.next()) {
+                return only_lifetime(only_child);
             }
         }
     }

@@ -76,12 +76,18 @@ mod parsing;
 mod replacing;
 mod resolving;
 mod search;
+mod structure;
 #[macro_use]
 mod errors;
 #[cfg(test)]
 mod tests;
 
-pub use crate::{errors::SsrError, from_comment::ssr_from_comment, matching::Match};
+pub use crate::{
+    errors::SsrError,
+    from_comment::ssr_from_comment,
+    matching::Match,
+    structure::{MatchContext, StructuredMatch, UsageKind},
+};
 
 use crate::{errors::bail, matching::MatchFailureReason};
 use hir::{FileRange, Semantics};
@@ -217,6 +223,11 @@ impl<'db> MatchFinder<'db> {
             self.find_matches_for_rule(rule, &mut usage_cache, &mut matches);
         }
         nester::nest_and_remove_collisions(matches, &self.sema)
+    }
+
+    /// Returns matches for all added rules as structured matches.
+    pub fn structured_matches(&self) -> Vec<StructuredMatch> {
+        self.matches().structured(&self.sema)
     }
 
     /// Finds all nodes in `file_id` whose text is exactly equal to `snippet` and attempts to match

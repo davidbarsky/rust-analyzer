@@ -48,6 +48,7 @@ use std::{
 use arrayvec::ArrayVec;
 use base_db::{CrateDisplayName, CrateOrigin, LangCrateOrigin, SourceDatabase, all_crates};
 use either::Either;
+use hir_def::layout::ExternAbi;
 use hir_def::{
     AdtId, AssocItemId, AssocItemLoc, BuiltinDeriveImplId, CallableDefId, ConstId, ConstParamId,
     DefWithBodyId, EnumId, EnumVariantId, ExpressionStoreOwnerId, ExternBlockId, ExternCrateId,
@@ -2491,6 +2492,16 @@ impl Function {
         match self.id {
             AnyFunctionId::FunctionId(id) => FunctionSignature::of(db, id).is_varargs(),
             AnyFunctionId::BuiltinDeriveImplMethod { .. } => false,
+        }
+    }
+
+    pub fn abi(self, db: &dyn HirDatabase) -> Option<Symbol> {
+        match self.id {
+            AnyFunctionId::FunctionId(id) => {
+                let abi = FunctionSignature::of(db, id).abi;
+                (abi != ExternAbi::Rust).then(|| Symbol::intern(abi.as_str()))
+            }
+            AnyFunctionId::BuiltinDeriveImplMethod { .. } => None,
         }
     }
 

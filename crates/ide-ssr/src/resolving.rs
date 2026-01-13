@@ -8,7 +8,11 @@ use syntax::{
     ast::{self, HasGenericArgs},
 };
 
-use crate::{SsrError, errors::error, parsing};
+use crate::{
+    SsrError,
+    errors::error,
+    parsing::{self, WhereClause},
+};
 
 pub(crate) struct ResolutionScope<'db> {
     scope: hir::SemanticsScope<'db>,
@@ -19,6 +23,8 @@ pub(crate) struct ResolvedRule<'db> {
     pub(crate) pattern: ResolvedPattern<'db>,
     pub(crate) template: Option<ResolvedPattern<'db>>,
     pub(crate) index: usize,
+    /// Rule-level where clause constraints
+    pub(crate) where_clause: WhereClause,
 }
 
 pub(crate) struct ResolvedPattern<'db> {
@@ -61,6 +67,7 @@ impl<'db> ResolvedRule<'db> {
                 pattern: resolver.resolve_pattern_tree(rule.pattern)?,
                 template: resolved_template,
                 index,
+                where_clause: rule.where_clause,
             })
         })
     }
@@ -69,6 +76,14 @@ impl<'db> ResolvedRule<'db> {
         if token.kind() != SyntaxKind::IDENT {
             return None;
         }
+        self.pattern.placeholders_by_stand_in.get(token.text())
+    }
+
+    pub(crate) fn get_lifetime_placeholder(&self, token: &SyntaxToken) -> Option<&Placeholder> {
+        if token.kind() != SyntaxKind::LIFETIME {
+            return None;
+        }
+        // token.text() is "'__placeholder_name", look it up directly
         self.pattern.placeholders_by_stand_in.get(token.text())
     }
 }

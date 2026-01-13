@@ -3,7 +3,7 @@ use hir::{FilePosition, FileRange};
 use ide_db::{EditionedFileId, base_db::SourceDatabase};
 use test_utils::RangeOrOffset;
 
-use crate::{MatchFinder, SsrRule};
+use crate::{MatchFinder, SsrRule, StructuredMatch, UsageKind};
 
 fn parse_error_text(query: &str) -> String {
     format!("{}", query.parse::<SsrRule>().unwrap_err())
@@ -215,6 +215,37 @@ fn assert_match_failure_reason(pattern: &str, code: &str, snippet: &str, expecte
     assert_eq!(reasons, vec![expected_reason]);
 }
 
+fn structured_matches(pattern: &str, code: &str) -> Vec<StructuredMatch> {
+    let (db, position, selections) = single_file(code);
+    hir::attach_db(&db, || {
+        let mut match_finder = MatchFinder::in_context(
+            &db,
+            ide_db::FilePosition {
+                file_id: position.file_id.file_id(&db),
+                offset: position.offset,
+            },
+            selections
+                .into_iter()
+                .map(|selection| ide_db::FileRange {
+                    file_id: selection.file_id.file_id(&db),
+                    range: selection.range,
+                })
+                .collect(),
+        )
+        .unwrap();
+        match_finder.add_search_pattern(pattern.parse().unwrap()).unwrap();
+        let matches = match_finder.matches().flattened();
+        matches.structured(&match_finder.sema)
+    })
+}
+
+fn find_match<'a>(matches: &'a [StructuredMatch], text: &str) -> &'a StructuredMatch {
+    matches
+        .iter()
+        .find(|m| m.matched_text == text)
+        .unwrap_or_else(|| panic!("No match with text '{text}'"))
+}
+
 #[test]
 fn ssr_let_stmt_in_macro_match() {
     assert_matches(
@@ -225,6 +256,480 @@ fn ssr_let_stmt_in_macro_match() {
         // FIXME: Whitespace is not part of the matched block
         &["leta=0"],
     );
+}
+
+#[test]
+fn ssr_type_constraint_matches_alias() {
+    assert_matches(
+        "let $a = ${x:type(MyAlias)};",
+        r#"
+            struct MyTy;
+            struct Other;
+            type MyAlias = MyTy;
+
+            fn make() -> MyAlias { MyTy }
+            fn other() -> Other { Other }
+
+            fn main() {
+                let a = make();
+                let b = other();
+            }
+        "#,
+        &["let a = make();"],
+    );
+}
+
+#[test]
+fn ssr_type_constraint_matches_reference() {
+    assert_matches(
+        "let $a = ${x:type(&str)};",
+        r#"
+            fn main() {
+                let a = "hello";
+                let b = 42;
+            }
+        "#,
+        &["let a = \"hello\";"],
+    );
+}
+
+#[test]
+fn ssr_type_constraint_matches_tuple() {
+    assert_matches(
+        "let $a = ${x:type((i32, bool))};",
+        r#"
+            fn main() {
+                let a = (1, true);
+                let b = (1, 2);
+            }
+        "#,
+        &["let a = (1, true);"],
+    );
+}
+
+#[test]
+fn ssr_type_constraint_matches_slice() {
+    assert_matches(
+        "let $a = ${x:type(&[i32])};",
+        r#"
+            fn main() {
+                let a = &[1, 2] as &[i32];
+                let b = &["one", "two"] as &[&str];
+            }
+        "#,
+        &["let a = &[1, 2] as &[i32];"],
+    );
+}
+
+#[test]
+fn ssr_type_constraint_matches_array() {
+    assert_matches(
+        "let $a = ${x:type([i32; 2])};",
+        r#"
+            fn main() {
+                let a = [1, 2];
+                let b = [1, 2, 3];
+            }
+        "#,
+        &["let a = [1, 2];"],
+    );
+}
+
+#[test]
+fn ssr_type_constraint_matches_mut_ref() {
+    assert_matches(
+        "let $a = ${x:type(&mut i32)};",
+        r#"
+            fn main() {
+                let mut value = 1;
+                let a = &mut value;
+                let b = &value;
+            }
+        "#,
+        &["let a = &mut value;"],
+    );
+}
+
+#[test]
+fn ssr_type_constraint_matches_unit() {
+    assert_matches(
+        "let $a = ${x:type(())};",
+        r#"
+            fn main() {
+                let a = ();
+                let b = 1;
+            }
+        "#,
+        &["let a = ();"],
+    );
+}
+
+#[test]
+fn ssr_type_constraint_matches_nested_tuple() {
+    assert_matches(
+        "let $a = ${x:type((i32, (bool, u8)))};",
+        r#"
+            fn main() {
+                let a = (1, (true, 2u8));
+                let b = (1, (true, 2u16));
+            }
+        "#,
+        &["let a = (1, (true, 2u8));"],
+    );
+}
+
+#[test]
+fn ssr_type_constraint_matches_raw_ptr() {
+    assert_matches(
+        "let $a = ${x:type(*const i32)};",
+        r#"
+            fn main() {
+                let a = core::ptr::null::<i32>() as *const i32;
+                let value = 1;
+                let b = &value;
+            }
+        "#,
+        &["let a = core::ptr::null::<i32>() as *const i32;"],
+    );
+}
+
+#[test]
+fn ssr_type_constraint_matches_generic_args() {
+    assert_matches(
+        "let $a = ${x:type(Vec<S>)};",
+        r#"
+            struct Vec<T>(T);
+            struct S;
+            struct T;
+
+            fn main() {
+                let a = Vec::<S>(S);
+                let b = Vec::<T>(T);
+            }
+        "#,
+        &["let a = Vec::<S>(S);"],
+    );
+
+    assert_matches(
+        "let $a = ${x:type(Vec<Option<S>>)};",
+        r#"
+            struct Vec<T>(T);
+            enum Option<T> { Some(T), None }
+            struct S;
+            struct T;
+
+            fn main() {
+                let a = Vec::<Option<S>>(Option::Some(S));
+                let b = Vec::<Option<T>>(Option::Some(T));
+            }
+        "#,
+        &["let a = Vec::<Option<S>>(Option::Some(S));"],
+    );
+
+    assert_matches(
+        "let $a = ${x:type(Result<S, T>)};",
+        r#"
+            enum Result<T, E> { Ok(T), Err(E) }
+            struct S;
+            struct T;
+            struct U;
+
+            fn main() {
+                let a = Result::<S, T>::Ok(S);
+                let b = Result::<S, U>::Ok(S);
+            }
+        "#,
+        &["let a = Result::<S, T>::Ok(S);"],
+    );
+
+    assert_matches(
+        "let $a = ${x:type(Vec<Result<S, T>>)};",
+        r#"
+            struct Vec<T>(T);
+            enum Result<T, E> { Ok(T), Err(E) }
+            struct S;
+            struct T;
+            struct U;
+
+            fn main() {
+                let a = Vec::<Result<S, T>>(Result::Ok(S));
+                let b = Vec::<Result<S, U>>(Result::Ok(S));
+            }
+        "#,
+        &["let a = Vec::<Result<S, T>>(Result::Ok(S));"],
+    );
+
+    assert_matches(
+        "let $a = ${x:type(Vec<Result<S, T>>)};",
+        r#"
+            struct Vec<T>(T);
+            enum Result<T, E> { Ok(T), Err(E) }
+            struct S;
+            struct T;
+            struct U;
+            struct V;
+
+            fn main() {
+                let a = Vec::<Result<S, T>>(Result::Ok(S));
+                let b = Vec::<Result<U, V>>(Result::Ok(U));
+            }
+        "#,
+        &["let a = Vec::<Result<S, T>>(Result::Ok(S));"],
+    );
+
+    assert_matches(
+        "let $a = ${x:type(Vec<Result<S, T>>)};",
+        r#"
+            struct Vec<T>(T);
+            enum Result<T, E> { Ok(T), Err(E) }
+            struct S;
+            struct T;
+            struct U;
+
+            fn main() {
+                let a = Vec::<Result<S, T>>(Result::Ok(S));
+                let b = Vec::<Result<S, U>>(Result::Ok(S));
+            }
+        "#,
+        &["let a = Vec::<Result<S, T>>(Result::Ok(S));"],
+    );
+
+    assert_matches(
+        "let $a = ${x:type(Vec<Result<S, T>>)};",
+        r#"
+            struct Vec<T>(T);
+            enum Result<T, E> { Ok(T), Err(E) }
+            enum Option<T> { Some(T), None }
+            struct S;
+            struct T;
+
+            fn main() {
+                let a = Vec::<Result<S, T>>(Result::Ok(S));
+                let b = Vec::<Option<S>>(Option::Some(S));
+            }
+        "#,
+        &["let a = Vec::<Result<S, T>>(Result::Ok(S));"],
+    );
+
+    assert_matches(
+        "let $a = ${x:type(Vec<Result<S>>)};",
+        r#"
+            struct Vec<T>(T);
+            enum Result<T, E> { Ok(T), Err(E) }
+            struct S;
+            struct T;
+
+            fn main() {
+                let a = Vec::<Result<S, T>>(Result::Ok(S));
+            }
+        "#,
+        // Expect no matches because the pattern has fewer generic args than the code.
+        &[],
+    );
+}
+
+#[test]
+fn ssr_type_constraint_matches_impl_trait() {
+    assert_matches(
+        "let $a = ${x:type(impl Foo)};",
+        r#"
+            trait Foo {}
+            struct S;
+            impl Foo for S {}
+
+            fn make() -> impl Foo { S }
+            fn make_concrete() -> S { S }
+
+            fn main() {
+                let a = make();
+                let b = make_concrete();
+            }
+        "#,
+        &["let a = make();"],
+    );
+}
+
+#[test]
+fn ssr_type_constraint_matches_impl_trait_generic_args() {
+    assert_matches(
+        "let $a = ${x:type(impl Foo<S>)};",
+        r#"
+            trait Foo<T> {}
+            struct A;
+            struct S;
+            struct T;
+            impl Foo<S> for A {}
+            impl Foo<T> for A {}
+
+            fn make_s() -> impl Foo<S> { A }
+            fn make_t() -> impl Foo<T> { A }
+
+            fn main() {
+                let a = make_s();
+                let b = make_t();
+            }
+        "#,
+        &["let a = make_s();"],
+    );
+}
+
+#[test]
+fn ssr_type_constraint_matches_async_fn_trait_bound() {
+    assert_matches(
+        "let $a = ${x:type(impl AsyncFn)};",
+        r#"
+            trait AsyncFn {}
+            struct S;
+            impl AsyncFn for S {}
+
+            fn make() -> impl AsyncFn { S }
+
+            fn main() {
+                let a = make();
+                let b = S;
+            }
+        "#,
+        &["let a = make();"],
+    );
+}
+
+#[test]
+fn ssr_type_constraint_matches_dyn_trait() {
+    assert_matches(
+        "let $a = ${x:type(&dyn Foo)};",
+        r#"
+            trait Foo {}
+            trait Bar {}
+            struct S;
+            impl Foo for S {}
+            impl Bar for S {}
+
+            fn main() {
+                let a = &S as &dyn Foo;
+                let b = &S as &dyn Bar;
+            }
+        "#,
+        &["let a = &S as &dyn Foo;"],
+    );
+}
+
+#[test]
+fn ssr_type_constraint_matches_fn_trait_args() {
+    assert_matches(
+        "let $a = ${x:type(impl core::ops::Fn(i32) -> i32)};",
+        r#"
+            //- minicore: fn
+            fn foo(x: i32) -> i32 { x }
+            fn bar(x: u32) -> u32 { x }
+
+            fn make_foo() -> impl core::ops::Fn(i32) -> i32 { foo }
+            fn make_bar() -> impl core::ops::Fn(u32) -> u32 { bar }
+
+            fn main() {
+                let a = make_foo();
+                let b = make_bar();
+            }
+        "#,
+        &["let a = make_foo();"],
+    );
+}
+
+#[test]
+fn ssr_type_constraint_matches_fn_ptr() {
+    assert_matches(
+        "let $a = ${x:type(fn(i32) -> i32)};",
+        r#"
+            fn f(x: i32) -> i32 { x }
+            fn g(x: i32) -> u32 { x as u32 }
+
+            fn main() {
+                let a = f as fn(i32) -> i32;
+                let b = g as fn(i32) -> u32;
+            }
+        "#,
+        &["let a = f as fn(i32) -> i32;"],
+    );
+}
+
+#[test]
+fn ssr_type_constraint_matches_fn_ptr_qualifiers() {
+    assert_matches(
+        "let $a = ${x:type(unsafe fn(i32) -> i32)};",
+        r#"
+            unsafe fn u(x: i32) -> i32 { x }
+            fn s(x: i32) -> i32 { x }
+
+            fn main() {
+                let a = u;
+                let b = s;
+            }
+        "#,
+        &["let a = u;"],
+    );
+
+    assert_matches(
+        "let $a = ${x:type(extern \"C\" fn(i32) -> i32)};",
+        r#"
+            extern "C" fn c(x: i32) -> i32 { x }
+            fn r(x: i32) -> i32 { x }
+
+            fn main() {
+                let a = c;
+                let b = r;
+            }
+        "#,
+        &["let a = c;"],
+    );
+}
+
+#[test]
+fn ssr_structured_context_in_test() {
+    let matches = structured_matches(
+        "foo($x)",
+        r#"
+            fn foo(_x: i32) {}
+
+            fn main() { foo(1); }
+
+            #[test]
+            fn test_fn() { foo(2); }
+        "#,
+    );
+    let test_match = find_match(&matches, "foo(2)");
+    assert_eq!(test_match.context.enclosing_function.as_deref(), Some("test_fn"));
+    assert!(test_match.context.is_test);
+    assert!(!test_match.context.is_async);
+    assert!(!test_match.context.is_unsafe);
+
+    let main_match = find_match(&matches, "foo(1)");
+    assert_eq!(main_match.context.enclosing_function.as_deref(), Some("main"));
+    assert!(!main_match.context.is_test);
+}
+
+#[test]
+fn ssr_structured_context_async_unsafe_impl() {
+    let matches = structured_matches(
+        "foo($x)",
+        r#"
+            fn foo(_x: i32) {}
+
+            struct S;
+
+            impl S {
+                async fn run(&self) { foo(1); }
+                unsafe fn run_unsafe(&self) { foo(2); }
+            }
+        "#,
+    );
+    let async_match = find_match(&matches, "foo(1)");
+    assert_eq!(async_match.context.enclosing_impl.as_deref(), Some("S"));
+    assert!(async_match.context.is_async);
+    assert!(!async_match.context.is_unsafe);
+
+    let unsafe_match = find_match(&matches, "foo(2)");
+    assert_eq!(unsafe_match.context.enclosing_impl.as_deref(), Some("S"));
+    assert!(!unsafe_match.context.is_async);
+    assert!(unsafe_match.context.is_unsafe);
 }
 
 #[test]
@@ -588,6 +1093,118 @@ fn literal_constraint() {
         "#;
     assert_matches("Some(${a:kind(literal)})", code, &["Some(42)", "Some(\"foo\")", "Some(true)"]);
     assert_matches("Some(${a:not(kind(literal))})", code, &["Some(x1)", "Some(40 + 2)"]);
+}
+
+#[test]
+fn field_expr_constraint() {
+    let code = r#"
+        enum Option<T> { Some(T), None }
+        use Option::Some;
+        struct Foo { bar: i32 }
+        fn f1() {
+            let foo = Foo { bar: 42 };
+            let x1 = Some(foo.bar);
+            let x2 = Some(foo.bar.abs());
+            let x3 = Some(42);
+        }
+        "#;
+    assert_matches("Some(${a:kind(field_expr)})", code, &["Some(foo.bar)"]);
+    assert_matches("Some(${a:not(kind(field_expr))})", code, &["Some(foo.bar.abs())", "Some(42)"]);
+}
+
+#[test]
+fn method_call_constraint() {
+    let code = r#"
+        enum Option<T> { Some(T), None }
+        use Option::Some;
+        struct Foo { bar: i32 }
+        fn f1() {
+            let foo = Foo { bar: 42 };
+            let x1 = Some(foo.bar);
+            let x2 = Some(foo.bar.abs());
+            let x3 = Some(42.abs());
+        }
+        "#;
+    assert_matches(
+        "Some(${a:kind(method_call)})",
+        code,
+        &["Some(foo.bar.abs())", "Some(42.abs())"],
+    );
+    assert_matches("Some(${a:not(kind(method_call))})", code, &["Some(foo.bar)"]);
+}
+
+#[test]
+fn call_expr_constraint() {
+    let code = r#"
+        enum Option<T> { Some(T), None }
+        use Option::Some;
+        fn bar() -> i32 { 42 }
+        fn f1() {
+            let x1 = Some(bar());
+            let x2 = Some(42.abs());
+            let x3 = Some(42);
+        }
+        "#;
+    assert_matches("Some(${a:kind(call_expr)})", code, &["Some(bar())"]);
+    assert_matches("Some(${a:not(kind(call_expr))})", code, &["Some(42.abs())", "Some(42)"]);
+}
+
+#[test]
+fn receiver_context_constraint() {
+    let code = r#"
+        struct Foo { bar: i32 }
+        fn f1() {
+            let foo = Foo { bar: 42 };
+            let x1 = foo.bar.abs();
+            let x2 = foo.bar;
+        }
+        "#;
+    assert_matches("${a:receiver}.abs()", code, &["foo.bar.abs()"]);
+}
+
+#[test]
+fn not_receiver_context_constraint() {
+    let code = r#"
+        enum Option<T> { Some(T), None }
+        use Option::Some;
+        struct Foo { bar: i32 }
+        fn f1() {
+            let foo = Foo { bar: 42 };
+            let x1 = Some(foo.bar.abs());
+            let x2 = Some(foo.bar);
+        }
+        "#;
+    assert_matches("Some(${a:not(receiver)})", code, &["Some(foo.bar.abs())", "Some(foo.bar)"]);
+    assert_matches("Some(${a:receiver}.abs())", code, &["Some(foo.bar.abs())"]);
+}
+
+#[test]
+fn argument_context_constraint() {
+    let code = r#"
+        enum Option<T> { Some(T), None }
+        use Option::Some;
+        fn process(x: i32) {}
+        fn f1() {
+            let a = 42;
+            process(a);
+            let b = Some(a);
+        }
+        "#;
+    assert_matches("process(${x:argument})", code, &["process(a)"]);
+}
+
+#[test]
+fn lhs_context_constraint() {
+    let code = r#"
+        enum Option<T> { Some(T), None }
+        use Option::Some;
+        fn f1() {
+            let mut x = 1;
+            x = 2;
+            let y = Some(x);
+        }
+        "#;
+    assert_matches("${a:lhs} = 2", code, &["x = 2"]);
 }
 
 #[test]
@@ -1448,4 +2065,498 @@ fn replace_autoref_mut() {
             }
         "#]],
     );
+}
+
+#[test]
+fn where_clause_kind_constraint() {
+    let code = r#"
+        struct Foo { bar: i32 }
+        fn f1() {
+            let foo = Foo { bar: 42 };
+            let x1 = foo.bar;
+            let x2 = foo.baz;
+        }
+        "#;
+    assert_matches("$recv.$field [where kind(field_expr)]", code, &["foo.bar", "foo.baz"]);
+}
+
+#[test]
+fn where_clause_not_constraint() {
+    let code = r#"
+        struct Foo { bar: i32 }
+        fn f1() {
+            let foo = Foo { bar: 42 };
+            let x1 = foo.bar;
+            let x2 = foo.bar.abs();
+        }
+        "#;
+    assert_matches("$recv.$method() [where not(kind(field_expr))]", code, &["foo.bar.abs()"]);
+}
+
+#[test]
+fn where_clause_or_constraint() {
+    let code = r#"
+        struct Span { span: i32, call_site: i32, def_site: i32 }
+        fn f1() {
+            let s = Span { span: 1, call_site: 2, def_site: 3 };
+            let x1 = s.span;
+            let x2 = s.call_site;
+            let x3 = s.def_site;
+        }
+        "#;
+    assert_matches(
+        "$recv.$field [where $field.one_of(span) | $field.one_of(def_site)]",
+        code,
+        &["s.span", "s.def_site"],
+    );
+}
+
+#[test]
+fn where_clause_and_constraint() {
+    let code = r#"
+        struct Foo { bar: i32 }
+        fn f1() {
+            let foo = Foo { bar: 42 };
+            let x1 = foo.bar;
+            let x2 = foo.bar.abs();
+        }
+        "#;
+    assert_matches(
+        "$a.$b() [where kind(method_call), not(kind(field_expr))]",
+        code,
+        &["foo.bar.abs()"],
+    );
+}
+
+#[test]
+fn where_clause_placeholder_one_of() {
+    let code = r#"
+        struct Span { span: i32, call_site: i32, def_site: i32 }
+        fn f1() {
+            let s = Span { span: 1, call_site: 2, def_site: 3 };
+            let x1 = s.span;
+            let x2 = s.call_site;
+            let x3 = s.def_site;
+        }
+        "#;
+    assert_matches(
+        "$recv.$field [where $field.one_of(span, call_site)]",
+        code,
+        &["s.span", "s.call_site"],
+    );
+}
+
+#[test]
+fn where_clause_placeholder_eq() {
+    let code = r#"
+        struct Span { span: i32, call_site: i32, def_site: i32 }
+        fn f1() {
+            let s = Span { span: 1, call_site: 2, def_site: 3 };
+            let x1 = s.span;
+            let x2 = s.call_site;
+            let x3 = s.def_site;
+        }
+        "#;
+    assert_matches("$recv.$field [where $field.eq(span)]", code, &["s.span"]);
+}
+
+#[test]
+fn where_clause_context_receiver() {
+    let code = r#"
+        struct Foo { bar: i32 }
+        fn f1() {
+            let foo = Foo { bar: 42 };
+            let x1 = foo.bar.abs();
+            let x2 = foo.bar;
+        }
+        "#;
+    assert_matches("$recv.$field [where receiver]", code, &["foo.bar"]);
+}
+
+#[test]
+fn where_clause_complex_combination() {
+    let code = r#"
+        struct Foo { bar: i32, baz: i32 }
+        fn f1() {
+            let foo = Foo { bar: 42, baz: 10 };
+            let x1 = foo.bar;
+            let x2 = foo.baz;
+            let x3 = foo.bar.abs();
+        }
+        "#;
+    assert_matches("$recv.$field [where receiver, $field.eq(bar)]", code, &["foo.bar"]);
+}
+
+#[test]
+fn where_clause_with_transform() {
+    assert_ssr_transform(
+        "$recv.$field [where $field.one_of(span, call_site)] ==>> $recv.$field.resolved()",
+        r#"
+            struct Span { span: i32, call_site: i32, def_site: i32 }
+            impl Span {
+                fn resolved(&self) -> i32 { 0 }
+            }
+            fn f1() {
+                let s = Span { span: 1, call_site: 2, def_site: 3 };
+                let x1 = s.span;
+                let x2 = s.call_site;
+                let x3 = s.def_site;
+            }
+        "#,
+        expect![[r#"
+            struct Span { span: i32, call_site: i32, def_site: i32 }
+            impl Span {
+                fn resolved(&self) -> i32 { 0 }
+            }
+            fn f1() {
+                let s = Span { span: 1, call_site: 2, def_site: 3 };
+                let x1 = s.span.resolved();
+                let x2 = s.call_site.resolved();
+                let x3 = s.def_site;
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn where_clause_mut_self_constraint() {
+    assert_matches(
+        "$recv.$method() [where $method.mut_self]",
+        r#"
+            struct Span;
+            impl Span {
+                fn mutate(&mut self) {}
+                fn read(&self) {}
+                fn consume(self) {}
+            }
+            fn f1() {
+                let mut s = Span;
+                s.mutate();
+                s.read();
+                s.consume();
+            }
+        "#,
+        &["s.mutate()"],
+    );
+}
+
+#[test]
+fn where_clause_ref_self_constraint() {
+    assert_matches(
+        "$recv.$method() [where $method.ref_self]",
+        r#"
+            struct Span;
+            impl Span {
+                fn mutate(&mut self) {}
+                fn read(&self) {}
+                fn consume(self) {}
+            }
+            fn f1() {
+                let mut s = Span;
+                s.mutate();
+                s.read();
+                s.consume();
+            }
+        "#,
+        &["s.read()"],
+    );
+}
+
+#[test]
+fn where_clause_owned_self_constraint() {
+    assert_matches(
+        "$recv.$method() [where $method.owned_self]",
+        r#"
+            struct Span;
+            impl Span {
+                fn mutate(&mut self) {}
+                fn read(&self) {}
+                fn consume(self) {}
+            }
+            fn f1() {
+                let mut s = Span;
+                s.mutate();
+                s.read();
+                s.consume();
+            }
+        "#,
+        &["s.consume()"],
+    );
+}
+
+#[test]
+fn where_clause_mut_self_with_args() {
+    assert_matches(
+        "$recv.$method($a, $b) [where $method.mut_self]",
+        r#"
+            struct Span;
+            impl Span {
+                fn adjust(&mut self, x: i32, y: i32) {}
+                fn calculate(&self, x: i32, y: i32) -> i32 { x + y }
+            }
+            fn f1() {
+                let mut s = Span;
+                s.adjust(1, 2);
+                s.calculate(3, 4);
+            }
+        "#,
+        &["s.adjust(1, 2)"],
+    );
+}
+
+#[test]
+fn where_clause_mut_self_transform() {
+    assert_ssr_transform(
+        "$recv.get_copy().$method($a) [where $method.mut_self] ==>> $recv.$method($a)",
+        r#"
+            struct Data { value: i32 }
+            impl Data {
+                fn get_copy(&self) -> Data { Data { value: self.value } }
+                fn mutate(&mut self, x: i32) { self.value = x; }
+                fn read(&self, x: i32) -> i32 { self.value + x }
+            }
+            fn f1() {
+                let mut d = Data { value: 0 };
+                d.get_copy().mutate(42);
+                let _ = d.get_copy().read(10);
+            }
+        "#,
+        expect![[r#"
+            struct Data { value: i32 }
+            impl Data {
+                fn get_copy(&self) -> Data { Data { value: self.value } }
+                fn mutate(&mut self, x: i32) { self.value = x; }
+                fn read(&self, x: i32) -> i32 { self.value + x }
+            }
+            fn f1() {
+                let mut d = Data { value: 0 };
+                d.mutate(42);
+                let _ = d.get_copy().read(10);
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn where_clause_not_mut_self() {
+    assert_matches(
+        "$recv.$method() [where not($method.mut_self)]",
+        r#"
+            struct Span;
+            impl Span {
+                fn mutate(&mut self) {}
+                fn read(&self) {}
+                fn consume(self) {}
+            }
+            fn f1() {
+                let mut s = Span;
+                s.mutate();
+                s.read();
+                s.consume();
+            }
+        "#,
+        &["s.read()", "s.consume()"],
+    );
+}
+
+#[test]
+fn usage_kind_let_binding() {
+    let matches = structured_matches(
+        "foo($x)",
+        r#"
+            fn foo(_x: i32) -> i32 { 0 }
+            fn main() {
+                let a = foo(1);
+            }
+        "#,
+    );
+    assert_eq!(matches.len(), 1);
+    let m = &matches[0];
+    assert!(
+        matches!(m.usage_kind, UsageKind::LetBinding),
+        "expected LetBinding, got {:?}",
+        m.usage_kind
+    );
+}
+
+#[test]
+fn usage_kind_return() {
+    let matches = structured_matches(
+        "foo($x)",
+        r#"
+            fn foo(_x: i32) -> i32 { 0 }
+            fn main() -> i32 {
+                return foo(1);
+            }
+        "#,
+    );
+    assert_eq!(matches.len(), 1);
+    let m = &matches[0];
+    assert!(matches!(m.usage_kind, UsageKind::Return), "expected Return, got {:?}", m.usage_kind);
+}
+
+#[test]
+fn usage_kind_function_arg() {
+    let matches = structured_matches(
+        "foo($x)",
+        r#"
+            fn foo(x: i32) -> i32 { x }
+            fn bar(x: i32) {}
+            fn main() {
+                bar(foo(1));
+            }
+        "#,
+    );
+    let m = find_match(&matches, "foo(1)");
+    assert!(
+        matches!(m.usage_kind, UsageKind::FunctionArg),
+        "expected FunctionArg, got {:?}",
+        m.usage_kind
+    );
+}
+
+#[test]
+fn usage_kind_method_receiver() {
+    let matches = structured_matches(
+        "foo($x)",
+        r#"
+            struct S;
+            impl S {
+                fn bar(&self) {}
+            }
+            fn foo(_x: i32) -> S { S }
+            fn main() {
+                foo(1).bar();
+            }
+        "#,
+    );
+    let m = find_match(&matches, "foo(1)");
+    assert!(
+        matches!(m.usage_kind, UsageKind::MethodReceiver),
+        "expected MethodReceiver, got {:?}",
+        m.usage_kind
+    );
+}
+
+#[test]
+fn usage_kind_method_arg() {
+    let matches = structured_matches(
+        "foo($x)",
+        r#"
+            struct S;
+            impl S {
+                fn bar(&self, x: i32) {}
+            }
+            fn foo(x: i32) -> i32 { x }
+            fn main() {
+                S.bar(foo(1));
+            }
+        "#,
+    );
+    let m = find_match(&matches, "foo(1)");
+    assert!(
+        matches!(m.usage_kind, UsageKind::MethodArg),
+        "expected MethodArg, got {:?}",
+        m.usage_kind
+    );
+}
+
+#[test]
+fn usage_kind_match_arm() {
+    let matches = structured_matches(
+        "foo($x)",
+        r#"
+            fn foo(_x: i32) -> i32 { 0 }
+            fn main() {
+                match 0 {
+                    _ => foo(1),
+                };
+            }
+        "#,
+    );
+    let m = find_match(&matches, "foo(1)");
+    assert!(
+        matches!(m.usage_kind, UsageKind::MatchArm),
+        "expected MatchArm, got {:?}",
+        m.usage_kind
+    );
+}
+
+#[test]
+fn ssr_type_constraint_on_pattern_position() {
+    assert_matches(
+        "let ${x:type(i32)} = $e;",
+        r#"
+            fn main() {
+                let a = 42_i32;
+                let b = "hello";
+                let c = true;
+            }
+        "#,
+        &["let a = 42_i32;"],
+    );
+}
+
+#[test]
+fn ssr_type_constraint_on_pattern_position_struct() {
+    assert_matches(
+        "let ${x:type(S)} = $e;",
+        r#"
+            struct S;
+            struct T;
+            fn make_s() -> S { S }
+            fn make_t() -> T { T }
+
+            fn main() {
+                let a = make_s();
+                let b = make_t();
+            }
+        "#,
+        &["let a = make_s();"],
+    );
+}
+
+#[test]
+fn usage_kind_for_loop() {
+    let matches = structured_matches(
+        "foo($x)",
+        r#"
+            fn foo(_x: i32) -> Vec<i32> { vec![] }
+            fn main() {
+                for x in foo(1) {}
+            }
+        "#,
+    );
+    let m = find_match(&matches, "foo(1)");
+    assert!(matches!(m.usage_kind, UsageKind::ForLoop), "expected ForLoop, got {:?}", m.usage_kind);
+}
+
+#[test]
+fn usage_kind_plain_while_condition_is_not_while_let() {
+    let matches = structured_matches(
+        "foo($x)",
+        r#"
+            fn foo(_x: i32) -> bool { true }
+            fn main() {
+                while foo(1) {}
+            }
+        "#,
+    );
+    let m = find_match(&matches, "foo(1)");
+    assert_eq!(m.usage_kind, UsageKind::Other);
+}
+
+#[test]
+fn usage_kind_plain_if_condition_is_not_if_let() {
+    let matches = structured_matches(
+        "foo($x)",
+        r#"
+            fn foo(_x: i32) -> bool { true }
+            fn main() {
+                if foo(1) {}
+            }
+        "#,
+    );
+    let m = find_match(&matches, "foo(1)");
+    assert_eq!(m.usage_kind, UsageKind::Other);
 }

@@ -127,7 +127,11 @@ impl<'db> ReplacementRenderer<'_, 'db> {
     }
 
     fn render_token(&mut self, token: &SyntaxToken) {
-        if let Some(placeholder) = self.rule.get_placeholder(token) {
+        // Check for normal placeholder or lifetime placeholder
+        let placeholder =
+            self.rule.get_placeholder(token).or_else(|| self.rule.get_lifetime_placeholder(token));
+
+        if let Some(placeholder) = placeholder {
             if let Some(placeholder_value) =
                 self.match_info.placeholder_values.get(&placeholder.ident)
             {
@@ -139,6 +143,8 @@ impl<'db> ReplacementRenderer<'_, 'db> {
                 // directly. If we're not applying a method call, then we need to add explicitly
                 // deref and ref in order to match whatever was being done implicitly at the match
                 // site.
+                // Note: This doesn't apply to lifetime placeholders, but the conditions below
+                // will never be true for them anyway.
                 if !token_is_method_call_receiver(token)
                     && (placeholder_value.autoderef_count > 0
                         || placeholder_value.autoref_kind != ast::SelfParamKind::Owned)
