@@ -1,0 +1,56 @@
+[package]
+name = "ra-mcp"
+version = "0.0.0"
+description = "MCP server exposing rust-analyzer's semantic search and refactoring capabilities"
+rust-version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lib]
+name = "ra_mcp_handlers"
+path = "src/lib.rs"
+
+[dependencies]
+rmcp = { version = "0.14", features = ["server", "transport-io", "macros"] }
+tokio = { version = "1", features = ["full"] }
+serde.workspace = true
+serde_json.workspace = true
+schemars = "1.2"
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+url.workspace = true
+globset = "0.4"
+annotate-snippets = "0.12"
+ide.workspace = true
+ide-db.workspace = true
+ide-ssr.workspace = true
+load-cargo.workspace = true
+vfs.workspace = true
+vfs-notify.workspace = true
+project-model.workspace = true
+hir.workspace = true
+syntax.workspace = true
+paths.workspace = true
+toolchain.workspace = true
+crossbeam-channel.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+ide.workspace = true
+ide-db.workspace = true
+hir.workspace = true
+syntax.workspace = true
+rmcp = { version = "0.14", features = ["client"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "io-util"] }
+anyhow.workspace = true
+arbtest = "0.3"
+temp-dir.workspace = true
+test-utils.workspace = true
+test-fixture.workspace = true
+expect-test.workspace = true
+
+[lints]
+workspace = true
