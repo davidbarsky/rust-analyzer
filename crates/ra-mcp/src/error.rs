@@ -25,8 +25,6 @@ pub enum RequestError {
     InvalidPath { path: String },
     #[error("File not found in workspace: {path}")]
     FileNotFound { path: String },
-    #[error("File is excluded from the workspace: {path}")]
-    FileExcluded { path: String },
     #[error("Invalid position (line {line}, column {column}): {reason}")]
     InvalidPosition { line: u32, column: u32, reason: String },
     #[error("Invalid {kind}: {message}")]
@@ -77,7 +75,6 @@ impl RequestError {
             RequestError::NotInitialized => ErrorCode::INVALID_REQUEST,
             RequestError::InvalidPath { .. }
             | RequestError::FileNotFound { .. }
-            | RequestError::FileExcluded { .. }
             | RequestError::InvalidPosition { .. }
             | RequestError::InvalidSyntax { .. }
             | RequestError::InvalidPattern { .. }

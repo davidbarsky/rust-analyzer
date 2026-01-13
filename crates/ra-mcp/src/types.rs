@@ -2,6 +2,7 @@
 
 use std::path::PathBuf;
 
+use ide_db::base_db::SourceDatabase;
 use ide_db::{FileId, RootDatabase, line_index};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -1024,20 +1025,25 @@ pub struct SymbolsResults {
 #[derive(Clone, Copy)]
 pub struct ConversionContext<'a> {
     db: &'a RootDatabase,
-    vfs: &'a Vfs,
 }
 
 impl<'a> ConversionContext<'a> {
-    pub fn new(db: &'a RootDatabase, vfs: &'a Vfs) -> Self {
-        Self { db, vfs }
+    pub fn new(db: &'a RootDatabase) -> Self {
+        Self { db }
     }
 
     pub fn file_path(&self, file_id: FileId) -> Option<PathBuf> {
-        self.vfs.file_path(file_id).as_path().map(|p| p.to_owned().into())
+        let path = self.db.file_path(file_id)?;
+        match path.as_path() {
+            Some(path) => Some(path.to_owned().into()),
+            None => Some(PathBuf::from(path.to_string())),
+        }
     }
 
     pub fn resolve_anchored_path(&self, anchored: &AnchoredPathBuf) -> PathBuf {
-        let mut base = self.vfs.file_path(anchored.anchor).clone();
+        let Some(mut base) = self.db.file_path(anchored.anchor) else {
+            return PathBuf::default();
+        };
         base.pop();
         let Some(joined) = base.join(&anchored.path) else {
             return PathBuf::default();
