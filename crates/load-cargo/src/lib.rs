@@ -16,7 +16,7 @@ use hir_expand::proc_macro::{
     ProcMacrosBuilder,
 };
 use ide_db::{
-    ChangeWithProcMacros, FxHashMap, RootDatabase,
+    ChangeWithProcMacros, FxHashMap, FxHashSet, RootDatabase,
     base_db::{
         CrateGraphBuilder, Env, ProcMacroLoadingError, SourceDatabase, SourceRootId, SourceRootKind,
     },
@@ -107,30 +107,8 @@ pub fn load_workspace_into_db(
     };
 
     tracing::debug!(?load_config, "LoadCargoConfig");
-    let proc_macro_server = match &load_config.with_proc_macro_server {
-        ProcMacroServerChoice::Sysroot => ws.find_sysroot_proc_macro_srv().map(|it| {
-            it.and_then(|it| {
-                ProcMacroClient::spawn(
-                    &it,
-                    extra_env,
-                    ws.toolchain.as_ref(),
-                    load_config.proc_macro_processes,
-                )
-                .map_err(Into::into)
-            })
-            .map_err(|e| ProcMacroLoadingError::ProcMacroSrvError(e.to_string().into_boxed_str()))
-        }),
-        ProcMacroServerChoice::Explicit(path) => Some(
-            ProcMacroClient::spawn(
-                path,
-                extra_env,
-                ws.toolchain.as_ref(),
-                load_config.proc_macro_processes,
-            )
-            .map_err(|e| ProcMacroLoadingError::ProcMacroSrvError(e.to_string().into_boxed_str())),
-        ),
-        ProcMacroServerChoice::None => Some(Err(ProcMacroLoadingError::Disabled)),
-    };
+    let proc_macro_server =
+        spawn_proc_macro_server(std::slice::from_ref(&ws), extra_env, load_config);
     match &proc_macro_server {
         Some(Ok(server)) => {
             tracing::info!(manifest=%ws.manifest_or_root(), path=%server.server_path(), "Proc-macro server started")
@@ -155,30 +133,20 @@ pub fn load_workspace_into_db(
         },
         extra_env,
     );
-    let proc_macros = {
-        let proc_macro_server = match &proc_macro_server {
-            Some(Ok(it)) => Ok(it),
-            Some(Err(e)) => {
-                Err(ProcMacroLoadingError::ProcMacroSrvError(e.to_string().into_boxed_str()))
-            }
-            None => Err(ProcMacroLoadingError::ProcMacroSrvError(
-                "proc-macro-srv is not running, workspace is missing a sysroot".into(),
-            )),
-        };
-        proc_macros
-            .into_iter()
-            .map(|(crate_id, path)| {
-                (
-                    crate_id,
-                    path.and_then(|(_, path)| {
-                        proc_macro_server.as_ref().map_err(Clone::clone).and_then(
-                            |proc_macro_server| load_proc_macro(proc_macro_server, &path, &[]),
-                        )
-                    }),
-                )
-            })
-            .collect()
-    };
+    let proc_macro_server_ref = flatten_proc_macro_server(&proc_macro_server);
+    let proc_macros = proc_macros
+        .into_iter()
+        .map(|(crate_id, path)| {
+            (
+                crate_id,
+                path.and_then(|(_, path)| {
+                    proc_macro_server_ref.as_ref().map_err(Clone::clone).and_then(
+                        |proc_macro_server| load_proc_macro(proc_macro_server, &path, &[]),
+                    )
+                }),
+            )
+        })
+        .collect();
 
     let project_folders = ProjectFolders::new(std::slice::from_ref(&ws), &[], None);
     loader.set_config(vfs::loader::Config {
@@ -190,7 +158,7 @@ pub fn load_workspace_into_db(
     load_crate_graph_into_db(
         crate_graph,
         proc_macros,
-        project_folders.source_root_config,
+        &project_folders.source_root_config,
         loaded_files,
         &receiver,
         db,
@@ -467,6 +435,209 @@ impl SourceRootConfig {
     }
 }
 
+/// Spawns the proc-macro server chosen by `load_config`, searching `workspaces`
+/// for a sysroot server or toolchain as needed. Does not log the outcome;
+/// callers that care about a single workspace's manifest log it themselves.
+fn spawn_proc_macro_server(
+    workspaces: &[ProjectWorkspace],
+    extra_env: &FxHashMap<String, Option<String>>,
+    load_config: &LoadCargoConfig,
+) -> Option<Result<ProcMacroClient, ProcMacroLoadingError>> {
+    match &load_config.with_proc_macro_server {
+        ProcMacroServerChoice::Sysroot => {
+            let srv_path = workspaces.iter().find_map(|ws| ws.find_sysroot_proc_macro_srv());
+            srv_path.map(|it| {
+                let toolchain = workspaces.iter().find_map(|ws| ws.toolchain.as_ref());
+                it.and_then(|it| {
+                    ProcMacroClient::spawn(
+                        &it,
+                        extra_env,
+                        toolchain,
+                        load_config.proc_macro_processes,
+                    )
+                    .map_err(Into::into)
+                })
+                .map_err(|e| {
+                    ProcMacroLoadingError::ProcMacroSrvError(e.to_string().into_boxed_str())
+                })
+            })
+        }
+        ProcMacroServerChoice::Explicit(path) => {
+            let toolchain = workspaces.iter().find_map(|ws| ws.toolchain.as_ref());
+            Some(
+                ProcMacroClient::spawn(
+                    path,
+                    extra_env,
+                    toolchain,
+                    load_config.proc_macro_processes,
+                )
+                .map_err(|e| {
+                    ProcMacroLoadingError::ProcMacroSrvError(e.to_string().into_boxed_str())
+                }),
+            )
+        }
+        ProcMacroServerChoice::None => Some(Err(ProcMacroLoadingError::Disabled)),
+    }
+}
+
+/// Flattens the `Option<Result<..>>` spawn outcome into the `Result` shape
+/// `load_proc_macro` callers need, synthesizing the "missing a sysroot" error
+/// for the `None` (no server configured) case.
+fn flatten_proc_macro_server(
+    proc_macro_server: &Option<Result<ProcMacroClient, ProcMacroLoadingError>>,
+) -> Result<&ProcMacroClient, ProcMacroLoadingError> {
+    match proc_macro_server {
+        Some(Ok(it)) => Ok(it),
+        Some(Err(e)) => {
+            Err(ProcMacroLoadingError::ProcMacroSrvError(e.to_string().into_boxed_str()))
+        }
+        None => Err(ProcMacroLoadingError::ProcMacroSrvError(
+            "proc-macro-srv is not running, workspace is missing a sysroot".into(),
+        )),
+    }
+}
+
+/// Merges each workspace's crate graph into one via `CrateGraphBuilder::extend`,
+/// loading proc macros against `proc_macro_server` as it goes. `load` interns
+/// crate-root and dependency file paths while `to_crate_graph` walks each workspace.
+fn load_crate_graphs(
+    workspaces: &[ProjectWorkspace],
+    extra_env: &FxHashMap<String, Option<String>>,
+    proc_macro_server: Result<&ProcMacroClient, ProcMacroLoadingError>,
+    mut load: impl FnMut(&AbsPath) -> Option<FileId>,
+) -> (CrateGraphBuilder, ProcMacrosBuilder) {
+    let mut crate_graph = CrateGraphBuilder::default();
+    let mut all_proc_macros = ProcMacrosBuilder::default();
+
+    for ws in workspaces {
+        let (other, mut crate_proc_macros) = ws.to_crate_graph(&mut load, extra_env);
+        crate_graph.extend(other, &mut crate_proc_macros);
+
+        for (crate_id, path) in crate_proc_macros {
+            let loaded = path.map_or_else(Err, |(_, path)| {
+                proc_macro_server
+                    .as_ref()
+                    .map_err(Clone::clone)
+                    .and_then(|server| load_proc_macro(server, &path, &[]))
+            });
+            all_proc_macros.insert(crate_id, loaded);
+        }
+    }
+    crate_graph.shrink_to_fit();
+
+    (crate_graph, all_proc_macros)
+}
+
+/// Loads multiple workspaces into a single database, merging their crate graphs.
+///
+/// Mirrors the LSP's multi-workspace loading pattern (`ws_to_crate_graph` in `reload.rs`):
+/// each workspace produces its own crate graph, which are merged via
+/// `CrateGraphBuilder::extend`. Source roots are unified via `ProjectFolders::new`.
+/// Returns the computed `ProjectFolders` alongside the proc-macro client so callers
+/// can set up their own file watching.
+pub fn load_workspaces_into_db(
+    workspaces: &[ProjectWorkspace],
+    extra_env: &FxHashMap<String, Option<String>>,
+    load_config: &LoadCargoConfig,
+    db: &mut RootDatabase,
+) -> (Option<ProcMacroClient>, ProjectFolders) {
+    let (sender, receiver) = unbounded();
+    let mut loader = vfs_notify::NotifyHandle::spawn(sender);
+
+    tracing::debug!(?load_config, "LoadCargoConfig (multi-workspace)");
+
+    let proc_macro_server = spawn_proc_macro_server(workspaces, extra_env, load_config);
+    let proc_macro_server_ref = flatten_proc_macro_server(&proc_macro_server);
+
+    let mut loaded_files = FxHashMap::default();
+    let load = |path: &AbsPath| {
+        let contents = loader.load_sync(path);
+        let path = vfs::VfsPath::from(path.to_path_buf());
+        let file_id = db.intern_file_path(path.clone());
+        let exists = contents.is_some();
+        loaded_files.insert(file_id, (path, contents));
+        exists.then_some(file_id)
+    };
+
+    let (crate_graph, all_proc_macros) =
+        load_crate_graphs(workspaces, extra_env, proc_macro_server_ref, load);
+
+    // `project_folders.load` is cloned rather than moved so the full
+    // `ProjectFolders` can still be returned to the caller below.
+    let project_folders = ProjectFolders::new(workspaces, &[], None);
+    loader.set_config(vfs::loader::Config {
+        load: project_folders.load.clone(),
+        watch: vec![],
+        version: 0,
+    });
+
+    load_crate_graph_into_db(
+        crate_graph,
+        all_proc_macros,
+        &project_folders.source_root_config,
+        loaded_files,
+        &receiver,
+        db,
+    );
+
+    if load_config.prefill_caches {
+        prime_caches::parallel_prime_caches(db, load_config.num_worker_threads, &|_| ());
+    }
+
+    (proc_macro_server.and_then(Result::ok), project_folders)
+}
+
+/// Rebuild `workspaces` into an already-initialized `db`, in place.
+///
+/// This is the reload counterpart to [`load_workspaces_into_db`]: rather than
+/// starting from an empty database, it rebuilds the crate graph, source roots,
+/// and proc macros against the existing file path inputs and applies them
+/// incrementally, so salsa keeps the query caches it can. Returns the set of files
+/// the crate graph was derived from, so a caller can decide when a later change
+/// warrants another reload, along with the `ProjectFolders` computed for the new
+/// source roots.
+///
+/// The proc-macro server spawned here is intentionally dropped at return: its
+/// expanders keep it alive via their `Arc`'d pool, so the previous server's
+/// process is only garbage-collected once those expanders are replaced.
+pub fn reload_workspaces_into_db(
+    workspaces: &[ProjectWorkspace],
+    extra_env: &FxHashMap<String, Option<String>>,
+    load_config: &LoadCargoConfig,
+    db: &mut RootDatabase,
+) -> (FxHashSet<vfs::VfsPath>, ProjectFolders) {
+    let proc_macro_server = spawn_proc_macro_server(workspaces, extra_env, load_config);
+    let proc_macro_server_ref = flatten_proc_macro_server(&proc_macro_server);
+
+    let mut crate_graph_file_dependencies = FxHashSet::default();
+    let mut loaded_files = FxHashMap::default();
+    let load = |path: &AbsPath| {
+        let contents = std::fs::read(path).ok();
+        let vfs_path = vfs::VfsPath::from(path.to_path_buf());
+        crate_graph_file_dependencies.insert(vfs_path.clone());
+        let file_id = db.intern_file_path(vfs_path.clone());
+        let exists = contents.is_some();
+        loaded_files.insert(file_id, (vfs_path, contents));
+        exists.then_some(file_id)
+    };
+
+    let (crate_graph, all_proc_macros) =
+        load_crate_graphs(workspaces, extra_env, proc_macro_server_ref, load);
+
+    let project_folders = ProjectFolders::new(workspaces, &[], None);
+    let existing_files = db.file_paths();
+    apply_loaded_workspace_to_db(
+        crate_graph,
+        all_proc_macros,
+        &project_folders.source_root_config,
+        loaded_files,
+        existing_files,
+        db,
+    );
+
+    (crate_graph_file_dependencies, project_folders)
+}
+
 /// Load the proc-macros for the given lib path, disabling all expanders whose names are in `ignored_macros`.
 pub fn load_proc_macro(
     server: &ProcMacroClient,
@@ -504,13 +675,11 @@ pub fn load_proc_macro(
 fn load_crate_graph_into_db(
     crate_graph: CrateGraphBuilder,
     proc_macros: ProcMacrosBuilder,
-    source_root_config: SourceRootConfig,
+    source_root_config: &SourceRootConfig,
     mut loaded_files: FxHashMap<FileId, (VfsPath, Option<Vec<u8>>)>,
     receiver: &Receiver<vfs::loader::Message>,
     db: &mut RootDatabase,
 ) {
-    let mut analysis_change = ChangeWithProcMacros::default();
-
     db.enable_proc_attr_macros();
 
     // Wait until the loader has loaded all roots.
@@ -532,6 +701,29 @@ fn load_crate_graph_into_db(
             }
         }
     }
+
+    apply_loaded_workspace_to_db(
+        crate_graph,
+        proc_macros,
+        source_root_config,
+        loaded_files,
+        std::iter::empty(),
+        db,
+    );
+}
+
+fn apply_loaded_workspace_to_db(
+    crate_graph: CrateGraphBuilder,
+    proc_macros: ProcMacrosBuilder,
+    source_root_config: &SourceRootConfig,
+    loaded_files: FxHashMap<FileId, (VfsPath, Option<Vec<u8>>)>,
+    existing_files: impl IntoIterator<Item = (FileId, VfsPath)>,
+    db: &mut RootDatabase,
+) {
+    let mut analysis_change = ChangeWithProcMacros::default();
+
+    db.enable_proc_attr_macros();
+
     for (file_id, (_, contents)) in &loaded_files {
         if let Some(contents) = contents
             && let Ok(text) = String::from_utf8(contents.clone())
@@ -539,9 +731,15 @@ fn load_crate_graph_into_db(
             analysis_change.change_file(*file_id, Some(text))
         }
     }
-    let source_roots = source_root_config.partition(loaded_files.iter().filter_map(
-        |(&file_id, (path, contents))| contents.as_ref().map(|_| (file_id, path.clone())),
-    ));
+    let mut files = existing_files.into_iter().collect::<FxHashMap<_, _>>();
+    for (&file_id, (path, contents)) in &loaded_files {
+        if contents.is_some() {
+            files.insert(file_id, path.clone());
+        } else {
+            files.remove(&file_id);
+        }
+    }
+    let source_roots = source_root_config.partition(files);
     analysis_change.set_roots(source_roots);
 
     analysis_change.set_crate_graph(crate_graph);
