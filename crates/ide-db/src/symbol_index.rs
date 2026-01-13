@@ -105,6 +105,16 @@ pub struct Query {
     ///
     /// Defaults to `false`.
     exclude_imports: bool,
+    /// When `true`, include symbols whose name begins with `__`, which are
+    /// otherwise hidden to match editor symbol-search UX.
+    ///
+    /// Defaults to `false`.
+    include_hidden: bool,
+    /// When `true`, honor [`Self::only_types`] even for crate- and
+    /// path-filtered searches, which otherwise return all kinds.
+    ///
+    /// Defaults to `false`.
+    strict_only_types: bool,
 }
 
 impl Query {
@@ -122,6 +132,8 @@ impl Query {
             assoc_mode: AssocSearchMode::Include,
             case_sensitive: false,
             exclude_imports: false,
+            include_hidden: false,
+            strict_only_types: false,
         }
     }
 
@@ -186,6 +198,14 @@ impl Query {
     pub fn exclude_imports(&mut self) {
         self.exclude_imports = true;
     }
+
+    pub fn include_hidden(&mut self) {
+        self.include_hidden = true;
+    }
+
+    pub fn strict_only_types(&mut self) {
+        self.strict_only_types = true;
+    }
 }
 
 /// The symbol indices of modules that make up a given crate.
@@ -227,11 +247,15 @@ pub fn world_symbols(db: &RootDatabase, mut query: Query) -> Vec<FileSymbol<'_>>
 
     // Search for crates by name (handles "::" and "::foo" queries)
     let indices: Vec<_> = if query.is_crate_search() {
-        query.only_types = false;
+        if !query.strict_only_types {
+            query.only_types = false;
+        }
         vec![SymbolIndex::extern_prelude_symbols(db)]
         // If we have a path filter, resolve it to target modules
     } else if !query.path_filter.is_empty() {
-        query.only_types = false;
+        if !query.strict_only_types {
+            query.only_types = false;
+        }
         let target_modules = resolve_path_to_modules(
             db,
             &query.path_filter,
@@ -593,7 +617,7 @@ impl Query {
         mut stream: fst::map::Union<'_>,
         mut cb: impl FnMut(&'db FileSymbol<'db>) -> ControlFlow<T>,
     ) -> Option<T> {
-        let ignore_underscore_prefixed = !self.query.starts_with("__");
+        let ignore_underscore_prefixed = !self.query.starts_with("__") && !self.include_hidden;
         while let Some((_, indexed_values)) = stream.next() {
             for &IndexedValue { index, value } in indexed_values {
                 let symbol_index = indices[index];
@@ -614,7 +638,6 @@ impl Query {
                     if non_type_for_type_only_query || !self.matches_assoc_mode(symbol.is_assoc) {
                         continue;
                     }
-                    // Hide symbols that start with `__` unless the query starts with `__`
                     let symbol_name = symbol.name.as_str();
                     if ignore_underscore_prefixed && symbol_name.starts_with("__") {
                         continue;
