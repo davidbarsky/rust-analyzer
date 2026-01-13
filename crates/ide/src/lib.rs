@@ -18,6 +18,7 @@ mod fixture;
 mod markup;
 mod navigation_target;
 
+mod add_argument;
 mod annotations;
 mod call_hierarchy;
 mod child_modules;
@@ -85,6 +86,7 @@ use view_memory_layout::{RecursiveMemoryLayout, view_memory_layout};
 use crate::navigation_target::ToNav;
 
 pub use crate::{
+    add_argument::AddArgumentResult,
     annotations::{Annotation, AnnotationConfig, AnnotationKind, AnnotationLocation},
     call_hierarchy::{CallHierarchyConfig, CallItem},
     expand_macro::ExpandedMacro,
@@ -252,6 +254,10 @@ pub struct Analysis {
 // API, the API should in theory be usable as a library, or via a different
 // protocol.
 impl Analysis {
+    pub fn raw_database(&self) -> &RootDatabase {
+        &self.db
+    }
+
     // Creates an analysis instance for a single file, without any external
     // dependencies, stdlib support or ability to apply changes. See
     // `AnalysisHost` for creating a fully-featured analysis.
@@ -884,6 +890,15 @@ impl Analysis {
         position: FilePosition,
     ) -> Cancellable<Result<RangeInfo<()>, RenameError>> {
         self.with_db(|db| rename::prepare_rename(db, position))
+    }
+
+    pub fn add_argument_to_call_sites(
+        &self,
+        position: FilePosition,
+        argument_index: usize,
+        placeholder: &str,
+    ) -> Cancellable<Option<AddArgumentResult>> {
+        self.with_db(|db| add_argument::add_argument(db, position, argument_index, placeholder))
     }
 
     pub fn will_rename_file(
