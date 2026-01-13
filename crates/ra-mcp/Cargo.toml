@@ -12,6 +12,10 @@ repository.workspace = true
 name = "ra_mcp_handlers"
 path = "src/lib.rs"
 
+[[bin]]
+name = "ra-mcp"
+path = "src/main.rs"
+
 [dependencies]
 rmcp = { version = "0.14", features = ["server", "transport-io", "macros"] }
 tokio = { version = "1", features = ["full"] }

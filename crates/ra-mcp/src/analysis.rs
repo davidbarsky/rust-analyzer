@@ -8,15 +8,15 @@ use std::time::Duration;
 use crossbeam_channel::{Receiver, RecvTimeoutError};
 use hir::ChangeWithProcMacros;
 use ide::{AnalysisHost, FilePosition};
-use ide_db::{FxHashMap, FxHashSet};
-use ide_db::base_db::{SourceDatabase, all_crates};
 use ide_db::base_db::salsa::Cancelled;
+use ide_db::base_db::{SourceDatabase, all_crates};
+use ide_db::{FxHashMap, FxHashSet};
 use load_cargo::{LoadCargoConfig, ProcMacroServerChoice, SourceRootConfig};
 use paths::{AbsPath, AbsPathBuf};
 use project_model::{CargoConfig, ProjectJson, ProjectManifest, ProjectWorkspace, RustLibSource};
 use tokio::sync::mpsc;
-use vfs::loader::Handle as _;
 use vfs::VfsPath;
+use vfs::loader::Handle as _;
 
 use crate::discover::{self, DiscoverArgument, DiscoverConfig};
 use crate::error::{AnalysisError, EnvironmentError, McpError, RequestError, cancelled_in};
