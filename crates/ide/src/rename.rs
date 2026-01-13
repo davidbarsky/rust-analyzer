@@ -27,6 +27,7 @@ pub use ide_db::rename::RenameError;
 
 type RenameResult<T> = Result<T, RenameError>;
 
+#[derive(Default)]
 pub struct RenameConfig {
     pub prefer_no_std: bool,
     pub prefer_prelude: bool,
