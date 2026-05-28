@@ -107,7 +107,7 @@ impl Tester {
             num_worker_threads: 1,
             proc_macro_processes: 1,
         };
-        let (db, _vfs, _proc_macro) =
+        let (db, _proc_macro) =
             load_workspace(workspace, &cargo_config.extra_env, &load_cargo_config)?;
         let host = AnalysisHost::with_database(db);
         let db = host.raw_database();

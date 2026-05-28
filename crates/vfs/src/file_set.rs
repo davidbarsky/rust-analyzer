@@ -8,7 +8,7 @@ use fst::{IntoStreamer, Streamer};
 use indexmap::IndexMap;
 use rustc_hash::{FxBuildHasher, FxHashMap};
 
-use crate::{AnchoredPath, FileId, Vfs, VfsPath};
+use crate::{AnchoredPath, FileId, VfsPath};
 
 /// A set of [`VfsPath`]s identified by [`FileId`]s.
 #[derive(Default, Clone, Eq, PartialEq)]
@@ -45,10 +45,21 @@ impl FileSet {
     }
 
     /// Insert the `file_id, path` pair into the set.
-    ///
-    /// # Note
-    /// Multiple [`FileId`] can be mapped to the same [`VfsPath`], and vice-versa.
     pub fn insert(&mut self, file_id: FileId, path: VfsPath) {
+        match self.files.get(&path).copied() {
+            None => (),
+            Some(previous) if previous == file_id => (),
+            Some(previous) => {
+                panic!("duplicate file path `{path}` for file ids {previous:?} and {file_id:?}")
+            }
+        }
+        match self.paths.get(&file_id) {
+            None => (),
+            Some(previous) if previous == &path => (),
+            Some(previous) => {
+                panic!("file id {file_id:?} has multiple file paths `{previous}` and `{path}`")
+            }
+        }
         self.files.insert(path.clone(), file_id);
         self.paths.insert(file_id, path);
     }
@@ -65,26 +76,27 @@ impl fmt::Debug for FileSet {
     }
 }
 
-/// This contains path prefixes to partition a [`Vfs`] into [`FileSet`]s.
+/// This contains path prefixes to partition files into [`FileSet`]s.
 ///
 /// # Example
 /// ```rust
-/// # use vfs::{file_set::FileSetConfigBuilder, VfsPath, Vfs};
+/// # use vfs::{FileId, VfsPath, file_set::FileSetConfigBuilder};
 /// let mut builder = FileSetConfigBuilder::default();
 /// builder.add_file_set(vec![VfsPath::new_virtual_path("/src".to_string())]);
 /// let config = builder.build();
-/// let mut file_system = Vfs::default();
-/// file_system.set_file_contents(VfsPath::new_virtual_path("/src/main.rs".to_string()), Some(vec![]));
-/// file_system.set_file_contents(VfsPath::new_virtual_path("/src/lib.rs".to_string()), Some(vec![]));
-/// file_system.set_file_contents(VfsPath::new_virtual_path("/build.rs".to_string()), Some(vec![]));
+/// let files = [
+///     (FileId::from_raw(0), VfsPath::new_virtual_path("/src/main.rs".to_string())),
+///     (FileId::from_raw(1), VfsPath::new_virtual_path("/src/lib.rs".to_string())),
+///     (FileId::from_raw(2), VfsPath::new_virtual_path("/build.rs".to_string())),
+/// ];
 /// // contains the sets :
 /// // { "/src/main.rs", "/src/lib.rs" }
 /// // { "build.rs" }
-/// let sets = config.partition(&file_system);
+/// let sets = config.partition(files);
 /// ```
 #[derive(Debug)]
 pub struct FileSetConfig {
-    /// Number of sets that `self` can partition a [`Vfs`] into.
+    /// Number of sets that `self` can partition files into.
     ///
     /// This should be the number of sets in `self.map` + 1 for files that don't fit in any
     /// defined set.
@@ -105,20 +117,20 @@ impl FileSetConfig {
         FileSetConfigBuilder::default()
     }
 
-    /// Partition `vfs` into `FileSet`s.
+    /// Partition files into `FileSet`s.
     ///
     /// Creates a new [`FileSet`] for every set of prefixes in `self`.
-    pub fn partition(&self, vfs: &Vfs) -> Vec<FileSet> {
+    pub fn partition(&self, files: impl IntoIterator<Item = (FileId, VfsPath)>) -> Vec<FileSet> {
         let mut scratch_space = Vec::new();
         let mut res = vec![FileSet::default(); self.len()];
-        for (file_id, path) in vfs.iter() {
-            let root = self.classify(path, &mut scratch_space);
-            res[root].insert(file_id, path.clone());
+        for (file_id, path) in files {
+            let root = self.classify(&path, &mut scratch_space);
+            res[root].insert(file_id, path);
         }
         res
     }
 
-    /// Number of sets that `self` can partition a [`Vfs`] into.
+    /// Number of sets that `self` can partition files into.
     fn len(&self) -> usize {
         self.n_file_sets
     }

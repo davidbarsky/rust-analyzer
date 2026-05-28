@@ -38,7 +38,6 @@ use crate::{
     },
     diagnostics::convert_diagnostic,
     global_state::{FetchWorkspaceRequest, GlobalState, GlobalStateSnapshot},
-    line_index::LineEndings,
     lsp::{
         LspError, completion_item_hash,
         ext::{
@@ -2581,7 +2580,7 @@ fn run_rustfmt(
         };
     }
 
-    let (new_text, new_line_endings) = LineEndings::normalize(captured_stdout);
+    let (new_text, new_line_endings) = crate::line_index::normalize(captured_stdout);
 
     if line_index.endings != new_line_endings {
         // If line endings are different, send the entire file.

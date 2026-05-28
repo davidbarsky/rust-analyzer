@@ -2,7 +2,7 @@
 
 use std::collections::VecDeque;
 
-use base_db::SourceDatabase;
+use base_db::{SourceDatabase, SourceRootKind};
 use hir::{Crate, ItemInNs, ModuleDef, Name, Semantics};
 use span::{Edition, FileId};
 use syntax::{
@@ -134,8 +134,8 @@ pub fn lint_eq_or_in_group(lint: &str, lint_is: &str) -> bool {
 
 pub fn is_editable_crate(krate: Crate, db: &RootDatabase) -> bool {
     let root_file = krate.root_file(db);
-    let source_root_id = db.file_source_root(root_file).source_root_id(db);
-    !db.source_root(source_root_id).source_root(db).is_library
+    let source_root_id = db.file_source_root(root_file);
+    db.source_root(source_root_id).kind(db) == SourceRootKind::Local
 }
 
 // FIXME: This is a weird function

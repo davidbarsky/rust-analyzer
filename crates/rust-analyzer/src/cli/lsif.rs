@@ -7,13 +7,13 @@ use ide::{
     RootDatabase, StaticIndex, StaticIndexedFile, TokenId, TokenStaticData,
     VendoredLibrariesConfig,
 };
-use ide_db::{line_index, line_index::WideEncoding};
+use ide_db::{base_db::SourceDatabase, line_index, line_index::WideEncoding};
 use load_cargo::{LoadCargoConfig, ProcMacroServerChoice, load_workspace};
 use project_model::{CargoConfig, ProjectManifest, ProjectWorkspace, RustLibSource};
 use rustc_hash::FxHashMap;
 use stdx::format_to;
 use vendored as lsif;
-use vfs::{AbsPathBuf, Vfs};
+use vfs::AbsPathBuf;
 
 mod vendored;
 
@@ -32,7 +32,6 @@ struct LsifManager<'a, 'w> {
     package_map: FxHashMap<PackageInformation, Id>,
     analysis: &'a Analysis,
     db: &'a RootDatabase,
-    vfs: &'a Vfs,
     out: &'w mut dyn std::io::Write,
 }
 
@@ -49,7 +48,6 @@ impl LsifManager<'_, '_> {
     fn new<'a, 'w>(
         analysis: &'a Analysis,
         db: &'a RootDatabase,
-        vfs: &'a Vfs,
         out: &'w mut dyn std::io::Write,
     ) -> LsifManager<'a, 'w> {
         LsifManager {
@@ -60,7 +58,6 @@ impl LsifManager<'_, '_> {
             package_map: FxHashMap::default(),
             analysis,
             db,
-            vfs,
             out,
         }
     }
@@ -142,7 +139,7 @@ impl LsifManager<'_, '_> {
         if let Some(it) = self.file_map.get(&id) {
             return *it;
         }
-        let path = self.vfs.file_path(id);
+        let path = self.db.file_path(id).expect("file id has no associated path");
         let path = path.as_path().unwrap();
         let doc_id = self.add_vertex(lsif::Vertex::Document(lsif::Document {
             language_id: "rust".to_owned(),
@@ -305,7 +302,7 @@ impl flags::Lsif {
         let build_scripts = workspace.run_build_scripts(cargo_config, no_progress)?;
         workspace.set_build_scripts(build_scripts);
 
-        let (db, vfs, _proc_macro) =
+        let (db, _proc_macro) =
             load_workspace(workspace, &cargo_config.extra_env, &load_cargo_config)?;
         let host = AnalysisHost::with_database(db);
         let db = host.raw_database();
@@ -319,7 +316,7 @@ impl flags::Lsif {
 
         let si = StaticIndex::compute(&analysis, vendored_libs_config);
 
-        let mut lsif = LsifManager::new(&analysis, db, &vfs, out);
+        let mut lsif = LsifManager::new(&analysis, db, out);
         lsif.add_vertex(lsif::Vertex::MetaData(lsif::MetaData {
             version: String::from("0.5.0"),
             project_root: lsp_types::Uri::from_file_path(path).unwrap(),

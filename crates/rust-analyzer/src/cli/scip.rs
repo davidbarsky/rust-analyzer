@@ -7,12 +7,12 @@ use ide::{
     RootDatabase, StaticIndex, StaticIndexedFile, SymbolInformationKind, TextRange, TokenId,
     TokenStaticData, VendoredLibrariesConfig,
 };
-use ide_db::line_index;
+use ide_db::{base_db::SourceDatabase, line_index};
 use load_cargo::{LoadCargoConfig, ProcMacroServerChoice, load_workspace_at};
 use rustc_hash::{FxHashMap, FxHashSet};
 use scip::types::{self as scip_types, SymbolInformation};
 use tracing::error;
-use vfs::FileId;
+use vfs::{AbsPathBuf, FileId};
 
 use crate::{
     cli::flags,
@@ -26,8 +26,7 @@ impl flags::Scip {
         let now = Instant::now();
 
         let no_progress = &|s| eprintln!("rust-analyzer: Loading {s}");
-        let root =
-            vfs::AbsPathBuf::assert_utf8(std::env::current_dir()?.join(&self.path)).normalize();
+        let root = AbsPathBuf::assert_utf8(std::env::current_dir()?.join(&self.path)).normalize();
 
         let mut config = crate::config::Config::new(
             root.clone(),
@@ -56,7 +55,7 @@ impl flags::Scip {
             proc_macro_processes: config.proc_macro_num_processes(),
         };
         let cargo_config = config.cargo(None);
-        let (db, vfs, _) = load_workspace_at(
+        let (db, _) = load_workspace_at(
             root.as_path().as_ref(),
             &cargo_config,
             &load_cargo_config,
@@ -135,7 +134,7 @@ impl flags::Scip {
         for StaticIndexedFile { file_id, tokens, .. } in si.files {
             symbol_generator.clear_document_local_state();
 
-            let Some(relative_path) = get_relative_filepath(&vfs, &root, file_id) else { continue };
+            let Some(relative_path) = get_relative_filepath(db, &root, file_id) else { continue };
             let line_index = get_line_index(db, file_id);
 
             let mut occurrences = Vec::new();
@@ -241,7 +240,7 @@ impl flags::Scip {
             };
 
             let file_id = definition.file_id;
-            let Some(relative_path) = get_relative_filepath(&vfs, &root, file_id) else { continue };
+            let Some(relative_path) = get_relative_filepath(db, &root, file_id) else { continue };
             let line_index = get_line_index(db, file_id);
             let text_range = definition.range;
             if file_ids_emitted.contains(&file_id) {
@@ -339,11 +338,11 @@ fn compute_symbol_info(
 }
 
 fn get_relative_filepath(
-    vfs: &vfs::Vfs,
-    rootpath: &vfs::AbsPathBuf,
+    db: &RootDatabase,
+    rootpath: &AbsPathBuf,
     file_id: ide::FileId,
 ) -> Option<String> {
-    Some(vfs.file_path(file_id).as_path()?.strip_prefix(rootpath)?.as_str().to_owned())
+    Some(db.file_path(file_id)?.as_path()?.strip_prefix(rootpath)?.as_str().to_owned())
 }
 
 fn get_line_index(db: &RootDatabase, file_id: FileId) -> LineIndex {

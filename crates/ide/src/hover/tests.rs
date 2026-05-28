@@ -10044,15 +10044,15 @@ type A$0 = B;
     // Multiple nested crate.
     check(
         r#"
-//- /lib.rs crate:c
+//- /c/lib.rs crate:c
 /// Docs for C
 pub struct C;
 
-//- /lib.rs crate:b deps:c
+//- /b/lib.rs crate:b deps:c
 pub use c::C;
 pub type B = C;
 
-//- /lib.rs crate:a deps:b
+//- /a/lib.rs crate:a deps:b
 pub use b::B;
 pub type A = B;
 
@@ -10694,7 +10694,7 @@ fn test$0() {
     assert_debug_snapshot!(actual);
 }
 
-//- /lib.rs crate:expect_test
+//- /expect_test/lib.rs crate:expect_test
 struct Expect;
 
 impl Expect {
@@ -10706,13 +10706,13 @@ macro_rules! expect {
     ($e:expr) => Expect; // dummy
 }
 
-//- /lib.rs crate:insta
+//- /insta/lib.rs crate:insta
 #[macro_export]
 macro_rules! assert_debug_snapshot {
     ($e:expr) => {}; // dummy
 }
 
-//- /lib.rs crate:snapbox
+//- /snapbox/lib.rs crate:snapbox
 pub struct Assert;
 
 impl Assert {

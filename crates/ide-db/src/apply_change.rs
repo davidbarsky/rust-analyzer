@@ -64,8 +64,6 @@ impl RootDatabase {
             // // SymbolsDatabase
             // crate::symbol_index::ModuleSymbolsQuery
             // crate::symbol_index::LibrarySymbolsQuery
-            // crate::symbol_index::LocalRootsQuery
-            // crate::symbol_index::LibraryRootsQuery
             // // HirDatabase
             // hir::db::AdtDatumQuery
             // hir::db::AdtVarianceQuery

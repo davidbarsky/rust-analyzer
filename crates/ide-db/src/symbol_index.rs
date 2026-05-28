@@ -28,7 +28,7 @@ use std::{
 };
 
 use base_db::{
-    CrateOrigin, InternedSourceRootId, LangCrateOrigin, LibraryRoots, LocalRoots, SourceRootId,
+    CrateOrigin, InternedSourceRootId, LangCrateOrigin, SourceRootId, library_roots, local_roots,
     source_root_crates,
 };
 use fst::{Automaton, Streamer, raw::IndexedValue};
@@ -245,19 +245,14 @@ pub fn world_symbols(db: &RootDatabase, mut query: Query) -> Vec<FileSymbol<'_>>
 
         target_modules.iter().map(|&module| SymbolIndex::module_symbols(db, module)).collect()
     } else if query.libs {
-        LibraryRoots::get(db)
-            .roots(db)
+        library_roots(db)
             .par_iter()
             .for_each_with(db.clone(), |snap, &root| _ = SymbolIndex::library_symbols(snap, root));
-        LibraryRoots::get(db)
-            .roots(db)
-            .iter()
-            .map(|&root| SymbolIndex::library_symbols(db, root))
-            .collect()
+        library_roots(db).iter().map(|&root| SymbolIndex::library_symbols(db, root)).collect()
     } else {
         let mut crates = Vec::new();
 
-        for &root in LocalRoots::get(db).roots(db).iter() {
+        for &root in local_roots(db).iter() {
             crates.extend(source_root_crates(db, root).iter().copied())
         }
         crates
@@ -324,7 +319,7 @@ fn resolve_path_to_modules(
 
     // If not anchored to crate, also search for modules matching first segment in local crates
     if !anchor_to_crate {
-        for &root in LocalRoots::get(db).roots(db).iter() {
+        for &root in local_roots(db).iter() {
             for &krate in source_root_crates(db, root).iter() {
                 let root_module = Crate::from(krate).root_module(db);
                 for child in root_module.children(db) {
@@ -650,9 +645,7 @@ impl Query {
 mod tests {
 
     use expect_test::expect_file;
-    use rustc_hash::FxHashSet;
-    use salsa::Setter;
-    use test_fixture::{WORKSPACE, WithFixture};
+    use test_fixture::WithFixture;
 
     use super::*;
 
@@ -776,7 +769,7 @@ struct Duplicate;
 
     #[test]
     fn test_exclude_imports() {
-        let (mut db, _) = RootDatabase::with_many_files(
+        let (db, _) = RootDatabase::with_many_files(
             r#"
 //- /lib.rs
 mod foo;
@@ -786,10 +779,6 @@ pub use foo::Foo;
 pub struct Foo;
 "#,
         );
-
-        let mut local_roots = FxHashSet::default();
-        local_roots.insert(WORKSPACE);
-        LocalRoots::get(&db).set_roots(&mut db).to(local_roots);
 
         let mut query = Query::new("Foo".to_owned());
         let mut symbols = world_symbols(&db, query.clone());
@@ -866,7 +855,7 @@ pub struct Foo;
 
     #[test]
     fn test_path_search() {
-        let (mut db, _) = RootDatabase::with_many_files(
+        let (db, _) = RootDatabase::with_many_files(
             r#"
 //- /lib.rs crate:main
 mod inner;
@@ -879,10 +868,6 @@ pub mod nested {
 }
 "#,
         );
-
-        let mut local_roots = FxHashSet::default();
-        local_roots.insert(WORKSPACE);
-        LocalRoots::get(&db).set_roots(&mut db).to(local_roots);
 
         // Search for item in specific module
         let query = Query::new("inner::InnerStruct".to_owned());
@@ -910,7 +895,7 @@ pub mod nested {
 
     #[test]
     fn test_path_search_module() {
-        let (mut db, _) = RootDatabase::with_many_files(
+        let (db, _) = RootDatabase::with_many_files(
             r#"
 //- /lib.rs crate:main
 mod mymod;
@@ -921,10 +906,6 @@ pub fn my_func() {}
 pub const MY_CONST: u32 = 1;
 "#,
         );
-
-        let mut local_roots = FxHashSet::default();
-        local_roots.insert(WORKSPACE);
-        LocalRoots::get(&db).set_roots(&mut db).to(local_roots);
 
         // Browse all items in module
         let query = Query::new("main::mymod::".to_owned());
@@ -938,7 +919,7 @@ pub const MY_CONST: u32 = 1;
 
     #[test]
     fn test_fuzzy_item_with_path() {
-        let (mut db, _) = RootDatabase::with_many_files(
+        let (db, _) = RootDatabase::with_many_files(
             r#"
 //- /lib.rs crate:main
 mod mymod;
@@ -947,10 +928,6 @@ mod mymod;
 pub struct MyLongStructName;
 "#,
         );
-
-        let mut local_roots = FxHashSet::default();
-        local_roots.insert(WORKSPACE);
-        LocalRoots::get(&db).set_roots(&mut db).to(local_roots);
 
         // Fuzzy match on item name with exact path
         let query = Query::new("main::mymod::MyLong".to_owned());
@@ -965,7 +942,7 @@ pub struct MyLongStructName;
 
     #[test]
     fn test_case_insensitive_path() {
-        let (mut db, _) = RootDatabase::with_many_files(
+        let (db, _) = RootDatabase::with_many_files(
             r#"
 //- /lib.rs crate:main
 mod MyMod;
@@ -974,10 +951,6 @@ mod MyMod;
 pub struct MyStruct;
 "#,
         );
-
-        let mut local_roots = FxHashSet::default();
-        local_roots.insert(WORKSPACE);
-        LocalRoots::get(&db).set_roots(&mut db).to(local_roots);
 
         // Case insensitive path matching (default)
         let query = Query::new("main::mymod::MyStruct".to_owned());
@@ -988,7 +961,7 @@ pub struct MyStruct;
 
     #[test]
     fn test_absolute_path_search() {
-        let (mut db, _) = RootDatabase::with_many_files(
+        let (db, _) = RootDatabase::with_many_files(
             r#"
 //- /lib.rs crate:mycrate
 mod inner;
@@ -998,10 +971,6 @@ pub struct CrateRoot;
 pub struct InnerItem;
 "#,
         );
-
-        let mut local_roots = FxHashSet::default();
-        local_roots.insert(WORKSPACE);
-        LocalRoots::get(&db).set_roots(&mut db).to(local_roots);
 
         // Absolute path with leading ::
         let query = Query::new("::mycrate::inner::InnerItem".to_owned());
@@ -1021,7 +990,7 @@ pub struct InnerItem;
 
     #[test]
     fn test_wrong_path_returns_empty() {
-        let (mut db, _) = RootDatabase::with_many_files(
+        let (db, _) = RootDatabase::with_many_files(
             r#"
 //- /lib.rs crate:main
 mod existing;
@@ -1030,10 +999,6 @@ mod existing;
 pub struct MyStruct;
 "#,
         );
-
-        let mut local_roots = FxHashSet::default();
-        local_roots.insert(WORKSPACE);
-        LocalRoots::get(&db).set_roots(&mut db).to(local_roots);
 
         // Non-existent module path
         let query = Query::new("nonexistent::MyStruct".to_owned());
@@ -1048,17 +1013,13 @@ pub struct MyStruct;
 
     #[test]
     fn test_root_module_items() {
-        let (mut db, _) = RootDatabase::with_many_files(
+        let (db, _) = RootDatabase::with_many_files(
             r#"
 //- /lib.rs crate:mylib
 pub struct RootItem;
 pub fn root_fn() {}
 "#,
         );
-
-        let mut local_roots = FxHashSet::default();
-        local_roots.insert(WORKSPACE);
-        LocalRoots::get(&db).set_roots(&mut db).to(local_roots);
 
         // Items at crate root - path is just the crate name
         let query = Query::new("mylib::RootItem".to_owned());
@@ -1076,7 +1037,7 @@ pub fn root_fn() {}
     #[test]
     fn test_crate_search_all() {
         // Test that sole "::" returns all crates
-        let (mut db, _) = RootDatabase::with_many_files(
+        let (db, _) = RootDatabase::with_many_files(
             r#"
 //- /lib.rs crate:alpha
 pub struct AlphaStruct;
@@ -1088,10 +1049,6 @@ pub struct BetaStruct;
 pub struct GammaStruct;
 "#,
         );
-
-        let mut local_roots = FxHashSet::default();
-        local_roots.insert(WORKSPACE);
-        LocalRoots::get(&db).set_roots(&mut db).to(local_roots);
 
         // Sole "::" should return all crates (as module symbols)
         let query = Query::new("::".to_owned());
@@ -1107,7 +1064,7 @@ pub struct GammaStruct;
     #[test]
     fn test_crate_search_fuzzy() {
         // Test that "::foo" fuzzy-matches crate names
-        let (mut db, _) = RootDatabase::with_many_files(
+        let (db, _) = RootDatabase::with_many_files(
             r#"
 //- /lib.rs crate:my_awesome_lib
 pub struct AwesomeStruct;
@@ -1119,10 +1076,6 @@ pub struct OtherStruct;
 pub struct FooStruct;
 "#,
         );
-
-        let mut local_roots = FxHashSet::default();
-        local_roots.insert(WORKSPACE);
-        LocalRoots::get(&db).set_roots(&mut db).to(local_roots);
 
         // "::foo" should fuzzy-match crate names containing "foo"
         let query = Query::new("::foo".to_owned());
@@ -1158,7 +1111,7 @@ pub struct FooStruct;
     #[test]
     fn test_path_search_with_use_reexport() {
         // Test that module resolution works for `use` items (re-exports), not just `mod` items
-        let (mut db, _) = RootDatabase::with_many_files(
+        let (db, _) = RootDatabase::with_many_files(
             r#"
 //- /lib.rs crate:main
 mod inner;
@@ -1171,10 +1124,6 @@ pub mod nested {
 }
 "#,
         );
-
-        let mut local_roots = FxHashSet::default();
-        local_roots.insert(WORKSPACE);
-        LocalRoots::get(&db).set_roots(&mut db).to(local_roots);
 
         // Search via the re-exported path (main::nested::NestedStruct)
         // This should work because `nested` is in scope via `pub use inner::nested`

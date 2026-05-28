@@ -6,6 +6,7 @@ use std::{
     panic::UnwindSafe,
 };
 
+use ide_db::base_db::SourceDatabase;
 use itertools::Itertools;
 use lsp_types::{
     CancelParams, DidChangeConfigurationParams, DidChangeTextDocumentParams,
@@ -80,12 +81,11 @@ pub(crate) fn handle_did_open_text_document(
             && state.config.excluded().any(|excluded| abs_path.starts_with(&excluded))
         {
             tracing::trace!("opened excluded file {abs_path}");
-            state.vfs.write().0.insert_excluded_file(path);
             return Ok(());
         }
 
         let contents = params.text_document.text.into_bytes();
-        state.vfs.write().0.set_file_contents(path, Some(contents));
+        state.set_file_contents(path, Some(contents));
         if state.config.discover_workspace_config().is_some() {
             tracing::debug!("queuing task");
             let _ = state
@@ -120,7 +120,7 @@ pub(crate) fn handle_did_change_text_document(
         .into_bytes();
         if *data != new_contents {
             data.clone_from(&new_contents);
-            state.vfs.write().0.set_file_contents(path, Some(new_contents));
+            state.set_file_contents(path, Some(new_contents));
         }
     }
     Ok(())
@@ -138,7 +138,7 @@ pub(crate) fn handle_did_close_text_document(
         }
 
         // Clear diagnostics also for excluded files, just in case.
-        if let Some((file_id, _)) = state.vfs.read().0.file_id(&path) {
+        if let Some(file_id) = state.analysis_host.raw_database().file_id_for_path(&path) {
             state.diagnostics.clear_native_for(file_id);
         }
 
@@ -314,8 +314,8 @@ pub(crate) fn handle_did_change_watched_files(
 fn run_flycheck(state: &mut GlobalState, vfs_path: VfsPath) -> bool {
     let _p = tracing::info_span!("run_flycheck").entered();
 
-    let file_id = state.vfs.read().0.file_id(&vfs_path);
-    if let Some((file_id, vfs::FileExcluded::No)) = file_id {
+    let file_id = state.analysis_host.raw_database().file_id_for_path(&vfs_path);
+    if let Some(file_id) = file_id {
         let world = state.snapshot();
         let invocation_strategy = state.config.flycheck(None).invocation_strategy();
         let may_flycheck_workspace = state.config.flycheck_workspace(None);

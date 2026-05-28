@@ -1,6 +1,6 @@
 //! Defines a unit of change that can applied to the database to get the next
 //! state. Changes are transactional.
-use base_db::{CrateGraphBuilder, FileChange, SourceDatabase, SourceRoot};
+use base_db::{CrateGraphBuilder, FileChange, FileSet, SourceDatabase, SourceRootKind};
 use span::FileId;
 
 use crate::proc_macro::ProcMacrosBuilder;
@@ -36,7 +36,7 @@ impl ChangeWithProcMacros {
         self.proc_macros = Some(proc_macros);
     }
 
-    pub fn set_roots(&mut self, roots: Vec<SourceRoot>) {
+    pub fn set_roots(&mut self, roots: Vec<(SourceRootKind, FileSet)>) {
         self.source_change.set_roots(roots)
     }
 }

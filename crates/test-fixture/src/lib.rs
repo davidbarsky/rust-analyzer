@@ -11,7 +11,7 @@ use base_db::target::TargetData;
 use base_db::{
     Crate, CrateDisplayName, CrateGraphBuilder, CrateName, CrateOrigin, CrateWorkspaceData,
     DependencyBuilder, Env, FileChange, FileSet, FxIndexMap, LangCrateOrigin, SourceDatabase,
-    SourceRoot, Version, VfsPath, all_crates,
+    SourceRootKind, Version, VfsPath, all_crates,
 };
 use cfg::CfgOptions;
 use hir_expand::{
@@ -26,6 +26,7 @@ use hir_expand::{
 };
 use intern::{Symbol, sym};
 use paths::AbsPathBuf;
+use rustc_hash::FxHashSet;
 use span::{Edition, FileId, Span};
 use stdx::itertools::Itertools;
 use test_utils::{
@@ -287,6 +288,7 @@ impl ChangeFixture {
         let mut current_source_root_kind = SourceRootKind::Local;
         let mut file_id = FileId::from_raw(0);
         let mut roots = Vec::new();
+        let mut seen_paths = FxHashSet::default();
 
         let mut file_position = None;
 
@@ -329,11 +331,7 @@ impl ChangeFixture {
                     "new_source_root meta doesn't make sense without crate meta"
                 );
                 let prev_kind = mem::replace(&mut current_source_root_kind, kind);
-                let prev_root = match prev_kind {
-                    SourceRootKind::Local => SourceRoot::new_local(mem::take(&mut file_set)),
-                    SourceRootKind::Library => SourceRoot::new_library(mem::take(&mut file_set)),
-                };
-                roots.push(prev_root);
+                roots.push((prev_kind, mem::take(&mut file_set)));
             }
 
             if let Some((krate, origin, version)) = meta.krate {
@@ -371,6 +369,12 @@ impl ChangeFixture {
             }
 
             source_change.change_file(file_id, Some(text));
+            assert!(
+                seen_paths.insert(meta.path.clone()),
+                "duplicate fixture path `{}`: two crates cannot share a root file, \
+                 give each crate a distinct path (e.g. `/{{crate}}/lib.rs`)",
+                meta.path
+            );
             let path = VfsPath::new_virtual_path(meta.path);
             file_set.insert(file_id, path);
             files.push(span::EditionedFileId::new(file_id, meta.edition));
@@ -383,7 +387,7 @@ impl ChangeFixture {
 
             let mut fs = FileSet::default();
             fs.insert(core_file, VfsPath::new_virtual_path("/sysroot/core/lib.rs".to_owned()));
-            roots.push(SourceRoot::new_library(fs));
+            roots.push((SourceRootKind::Library, fs));
 
             sysroot_files.push(core_file);
 
@@ -476,7 +480,7 @@ impl ChangeFixture {
                 proc_lib_file,
                 VfsPath::new_virtual_path("/sysroot/proc_macros/lib.rs".to_owned()),
             );
-            roots.push(SourceRoot::new_library(fs));
+            roots.push((SourceRootKind::Library, fs));
 
             sysroot_files.push(proc_lib_file);
 
@@ -518,11 +522,7 @@ impl ChangeFixture {
 
         let _ = file_id;
 
-        let root = match current_source_root_kind {
-            SourceRootKind::Local => SourceRoot::new_local(mem::take(&mut file_set)),
-            SourceRootKind::Library => SourceRoot::new_library(mem::take(&mut file_set)),
-        };
-        roots.push(root);
+        roots.push((current_source_root_kind, mem::take(&mut file_set)));
 
         let mut change = ChangeWithProcMacros { source_change, proc_macros: Some(proc_macros) };
 
@@ -732,12 +732,6 @@ fn filter_test_proc_macros(
     (proc_macros, source)
 }
 
-#[derive(Debug, Clone, Copy)]
-enum SourceRootKind {
-    Local,
-    Library,
-}
-
 #[derive(Debug)]
 struct FileMeta {
     path: String,
@@ -814,7 +808,10 @@ fn parse_crate(
     };
 
     let non_workspace_member = explicit_non_workspace_member
-        || matches!(current_source_root_kind, SourceRootKind::Library);
+        || match current_source_root_kind {
+            SourceRootKind::Local => false,
+            SourceRootKind::Library => true,
+        };
 
     let origin = if force_non_lang_origin == ForceNoneLangOrigin::Yes {
         let name = Symbol::intern(&name);

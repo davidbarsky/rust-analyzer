@@ -85,9 +85,11 @@ pub use crate::{errors::SsrError, from_comment::ssr_from_comment, matching::Matc
 
 use crate::{errors::bail, matching::MatchFailureReason};
 use hir::{FileRange, Semantics};
-use ide_db::LocalRoots;
 use ide_db::text_edit::TextEdit;
-use ide_db::{EditionedFileId, FileId, FxHashMap, RootDatabase, base_db::SourceDatabase};
+use ide_db::{
+    EditionedFileId, FileId, FxHashMap, RootDatabase,
+    base_db::{SourceDatabase, local_roots},
+};
 use resolving::ResolvedRule;
 use syntax::{AstNode, SyntaxNode, TextRange, ast};
 
@@ -141,11 +143,8 @@ impl<'db> MatchFinder<'db> {
 
     /// Constructs an instance using the start of the first file in `db` as the lookup context.
     pub fn at_first_file(db: &'db ide_db::RootDatabase) -> Result<MatchFinder<'db>, SsrError> {
-        if let Some(first_file_id) = LocalRoots::get(db)
-            .roots(db)
-            .iter()
-            .next()
-            .and_then(|root| db.source_root(*root).source_root(db).iter().next())
+        if let Some(first_file_id) =
+            local_roots(db).iter().next().and_then(|root| db.source_root(*root).iter(db).next())
         {
             MatchFinder::in_context(
                 db,

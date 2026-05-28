@@ -192,7 +192,7 @@ fn f() {
             ModuleIdLt {
                 [salsa id]: Id(2c03),
                 krate: Crate(
-                    Id(1c00),
+                    Id(1800),
                 ),
                 block: Some(
                     BlockId(

@@ -20,7 +20,7 @@
 use hir::{PathResolution, Semantics};
 use ide_db::{
     FileId, RootDatabase,
-    base_db::SourceDatabase,
+    base_db::{SourceDatabase, SourceRootKind},
     defs::{Definition, NameClass, NameRefClass},
     helpers::pick_best_token,
     ra_fixture::{RaFixtureConfig, UpmapFromRaFixture},
@@ -224,8 +224,8 @@ pub(crate) fn find_all_refs(
 }
 
 fn is_library_file(db: &RootDatabase, file_id: FileId) -> bool {
-    let source_root = db.file_source_root(file_id).source_root_id(db);
-    db.source_root(source_root).source_root(db).is_library
+    let source_root = db.file_source_root(file_id);
+    db.source_root(source_root).kind(db) == SourceRootKind::Library
 }
 
 pub(crate) fn find_defs(

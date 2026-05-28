@@ -533,7 +533,7 @@ fn f() {
     fn test_struct_field_private_other_crate_fix() {
         check_fix(
             r#"
-//- /lib.rs crate:another_crate
+//- /another_crate/lib.rs crate:another_crate
 pub struct Struct {
     field: u32,
 }

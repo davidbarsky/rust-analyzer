@@ -1,9 +1,6 @@
 use expect_test::{Expect, expect};
 use hir::{FilePosition, FileRange};
-use ide_db::{
-    EditionedFileId, FxHashSet, LocalRoots,
-    base_db::{SourceDatabase, salsa::Setter},
-};
+use ide_db::{EditionedFileId, base_db::SourceDatabase};
 use test_utils::RangeOrOffset;
 
 use crate::{MatchFinder, SsrRule};
@@ -65,8 +62,8 @@ fn parser_undefined_placeholder_in_replacement() {
 /// `code` may optionally contain a cursor marker `$0`. If it doesn't, then the position will be
 /// the start of the file. If there's a second cursor marker, then we'll return a single range.
 pub(crate) fn single_file(code: &str) -> (ide_db::RootDatabase, FilePosition, Vec<FileRange>) {
-    use test_fixture::{WORKSPACE, WithFixture};
-    let (mut db, file_id, range_or_offset) = if code.contains(test_utils::CURSOR_MARKER) {
+    use test_fixture::WithFixture;
+    let (db, file_id, range_or_offset) = if code.contains(test_utils::CURSOR_MARKER) {
         ide_db::RootDatabase::with_range_or_offset(code)
     } else {
         let (db, file_id) = ide_db::RootDatabase::with_single_file(code);
@@ -84,9 +81,6 @@ pub(crate) fn single_file(code: &str) -> (ide_db::RootDatabase, FilePosition, Ve
             selections = vec![];
         }
     }
-    let mut local_roots = FxHashSet::default();
-    local_roots.insert(WORKSPACE);
-    LocalRoots::get(&db).set_roots(&mut db).to(local_roots);
     (db, position, selections)
 }
 

@@ -81,6 +81,12 @@ impl fmt::Display for ProcMacroLoadingError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct SourceRootId(pub u32);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SourceRootKind {
+    Local,
+    Library,
+}
+
 /// Files are grouped into source roots. A source root is a directory on the
 /// file systems which is watched for changes. Typically it corresponds to a
 /// Rust crate. Source roots *might* be nested: in this case, a file belongs to
@@ -88,39 +94,32 @@ pub struct SourceRootId(pub u32);
 /// source root, and the analyzer does not know the root path of the source root at
 /// all. So, a file from one source root can't refer to a file in another source
 /// root by path.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[salsa_macros::input(debug)]
 pub struct SourceRoot {
-    /// Sysroot or crates.io library.
-    ///
-    /// Libraries are considered mostly immutable, this assumption is used to
-    /// optimize salsa's query structure
-    pub is_library: bool,
-    file_set: FileSet,
+    pub kind: SourceRootKind,
+    #[returns(ref)]
+    pub file_set: Arc<FileSet>,
 }
 
 impl SourceRoot {
-    pub fn new_local(file_set: FileSet) -> SourceRoot {
-        SourceRoot { is_library: false, file_set }
+    pub fn resolve_path(self, db: &dyn salsa::Database, path: AnchoredPath<'_>) -> Option<FileId> {
+        self.file_set(db).resolve_path(path)
     }
 
-    pub fn new_library(file_set: FileSet) -> SourceRoot {
-        SourceRoot { is_library: true, file_set }
+    pub fn file_for_path(self, db: &dyn salsa::Database, path: &VfsPath) -> Option<FileId> {
+        self.file_set(db).file_for_path(path).copied()
     }
 
-    pub fn path_for_file(&self, file: &FileId) -> Option<&VfsPath> {
-        self.file_set.path_for_file(file)
+    pub fn path_for_file<'db>(
+        self,
+        db: &'db dyn salsa::Database,
+        file: &FileId,
+    ) -> Option<&'db VfsPath> {
+        self.file_set(db).path_for_file(file)
     }
 
-    pub fn file_for_path(&self, path: &VfsPath) -> Option<&FileId> {
-        self.file_set.file_for_path(path)
-    }
-
-    pub fn resolve_path(&self, path: AnchoredPath<'_>) -> Option<FileId> {
-        self.file_set.resolve_path(path)
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = FileId> + '_ {
-        self.file_set.iter()
+    pub fn iter<'db>(self, db: &'db dyn salsa::Database) -> impl Iterator<Item = FileId> + 'db {
+        self.file_set(db).iter()
     }
 }
 

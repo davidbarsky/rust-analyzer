@@ -379,9 +379,9 @@ fn check_with_config(
                     snippet_edit.apply(&mut text);
                 }
                 if !skip_header {
-                    let source_root_id = db.file_source_root(file_id).source_root_id(&db);
-                    let sr = db.source_root(source_root_id).source_root(&db);
-                    let path = sr.path_for_file(&file_id).unwrap();
+                    let source_root_id = db.file_source_root(file_id);
+                    let sr = db.source_root(source_root_id);
+                    let path = sr.path_for_file(&db, &file_id).unwrap();
                     format_to!(buf, "//- {}\n", path)
                 }
                 buf.push_str(&text);
@@ -399,9 +399,9 @@ fn check_with_config(
                     }
                 };
 
-                let source_root_id = db.file_source_root(dst.anchor).source_root_id(&db);
-                let sr = db.source_root(source_root_id).source_root(&db);
-                let mut base = sr.path_for_file(&dst.anchor).unwrap().clone();
+                let source_root_id = db.file_source_root(dst.anchor);
+                let sr = db.source_root(source_root_id);
+                let mut base = sr.path_for_file(&db, &dst.anchor).unwrap().clone();
                 base.pop();
                 let created_file_path = base.join(&dst.path).unwrap();
                 format_to!(buf, "//- {}\n", created_file_path);

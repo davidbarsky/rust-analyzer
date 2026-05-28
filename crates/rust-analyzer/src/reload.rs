@@ -18,7 +18,7 @@ use std::{iter, mem, sync::atomic::AtomicUsize, time::Duration};
 use hir::{ChangeWithProcMacros, ProcMacrosBuilder};
 use ide_db::{
     FxHashMap,
-    base_db::{CrateGraphBuilder, ProcMacroLoadingError, ProcMacroPaths},
+    base_db::{CrateGraphBuilder, ProcMacroLoadingError, ProcMacroPaths, SourceDatabase},
 };
 use itertools::Itertools;
 use load_cargo::{ProjectFolders, load_proc_macro};
@@ -758,15 +758,12 @@ impl GlobalState {
         self.incomplete_crate_graph = false;
         let (crate_graph, proc_macro_paths) = {
             // Create crate graph from all the workspaces
-            let vfs = &self.vfs.read().0;
             let load = |path: &AbsPath| {
                 let vfs_path = vfs::VfsPath::from(path.to_path_buf());
                 self.crate_graph_file_dependencies.insert(vfs_path.clone());
-                let file_id = vfs.file_id(&vfs_path);
+                let file_id = self.analysis_host.raw_database().file_id_for_path(&vfs_path);
                 self.incomplete_crate_graph |= file_id.is_none();
-                file_id.and_then(|(file_id, excluded)| {
-                    (excluded == vfs::FileExcluded::No).then_some(file_id)
-                })
+                file_id
             };
 
             ws_to_crate_graph(&self.workspaces, self.config.extra_env(None), load)

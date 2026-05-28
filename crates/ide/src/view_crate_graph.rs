@@ -3,7 +3,9 @@ use ide_db::base_db::all_crates;
 use ide_db::base_db::salsa::plumbing::AsId;
 use ide_db::{
     FxHashMap, RootDatabase,
-    base_db::{BuiltCrateData, BuiltDependency, Crate, ExtraCrateData, SourceDatabase},
+    base_db::{
+        BuiltCrateData, BuiltDependency, Crate, ExtraCrateData, SourceDatabase, SourceRootKind,
+    },
 };
 
 // Feature: View Crate Graph
@@ -27,8 +29,8 @@ pub(crate) fn view_crate_graph(db: &RootDatabase, full: bool) -> String {
                 true
             } else {
                 // Only render workspace crates
-                let root_id = db.file_source_root(crate_data.root_file_id).source_root_id(db);
-                !db.source_root(root_id).source_root(db).is_library
+                let root_id = db.file_source_root(crate_data.root_file_id);
+                db.source_root(root_id).kind(db) == SourceRootKind::Local
             }
         })
         .collect();

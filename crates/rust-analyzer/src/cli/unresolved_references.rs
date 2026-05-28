@@ -1,7 +1,12 @@
 //! Reports references in code that the IDE layer cannot resolve.
 use hir::{AnyDiagnostic, Crate, Module, Semantics, db::HirDatabase, sym};
 use ide::{AnalysisHost, RootDatabase, TextRange};
-use ide_db::{FxHashSet, base_db::SourceDatabase, defs::NameRefClass, line_index};
+use ide_db::{
+    FxHashSet,
+    base_db::{SourceDatabase, SourceRootKind},
+    defs::NameRefClass,
+    line_index,
+};
 use load_cargo::{LoadCargoConfig, ProcMacroServerChoice, load_workspace_at};
 use parser::SyntaxKind;
 use syntax::{AstNode, WalkEvent, ast};
@@ -47,7 +52,7 @@ impl flags::UnresolvedReferences {
             num_worker_threads: 1,
             proc_macro_processes: config.proc_macro_num_processes(),
         };
-        let (db, vfs, _proc_macro) =
+        let (db, _proc_macro) =
             load_workspace_at(&self.path, &cargo_config, &load_cargo_config, &|_| {})?;
         let host = AnalysisHost::with_database(db);
         let db = host.raw_database();
@@ -57,9 +62,9 @@ impl flags::UnresolvedReferences {
 
         let work = all_modules(db).into_iter().filter(|module| {
             let file_id = module.definition_source_file_id(db).original_file(db);
-            let source_root = db.file_source_root(file_id.file_id(db)).source_root_id(db);
-            let source_root = db.source_root(source_root).source_root(db);
-            !source_root.is_library
+            let source_root = db.file_source_root(file_id.file_id(db));
+            let source_root = db.source_root(source_root);
+            source_root.kind(db) == SourceRootKind::Local
         });
 
         for module in work {
@@ -72,7 +77,10 @@ impl flags::UnresolvedReferences {
                     .as_deref()
                     .unwrap_or(&sym::unknown)
                     .to_owned();
-                let file_path = vfs.file_path(file_id);
+                let file_path = db
+                    .file_path(file_id)
+                    .map(|path| path.to_string())
+                    .unwrap_or_else(|| "<unknown file>".to_owned());
                 eprintln!("processing crate: {crate_name}, module: {file_path}",);
 
                 let line_index = line_index(db, file_id);

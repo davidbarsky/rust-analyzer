@@ -29,7 +29,7 @@ use ide::{
 };
 use ide_db::{
     EditionedFileId, SnippetCap,
-    base_db::{SourceDatabase, salsa::Database},
+    base_db::{SourceDatabase, SourceRootKind, salsa::Database},
     line_index,
 };
 use itertools::Itertools;
@@ -41,7 +41,7 @@ use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 use rustc_type_ir::inherent::Ty as _;
 use syntax::AstNode;
-use vfs::{AbsPathBuf, Vfs, VfsPath};
+use vfs::{AbsPathBuf, VfsPath};
 
 use crate::cli::{
     Verbosity,
@@ -87,7 +87,7 @@ impl flags::AnalysisStats {
             } else {
                 match self.proc_macro_srv {
                     Some(ref path) => {
-                        let path = vfs::AbsPathBuf::assert_utf8(path.to_owned());
+                        let path = AbsPathBuf::assert_utf8(path.to_owned());
                         ProcMacroServerChoice::Explicit(path)
                     }
                     None => ProcMacroServerChoice::Sysroot,
@@ -107,7 +107,7 @@ impl flags::AnalysisStats {
             Some(build_scripts_sw.elapsed())
         };
 
-        let (db, vfs, _proc_macro) =
+        let (db, _proc_macro) =
             load_workspace(workspace.clone(), &cargo_config.extra_env, &load_cargo_config)?;
         eprint!("{:<20} {}", "Database loaded:", db_load_sw.elapsed());
         eprint!(" (metadata {metadata_time}");
@@ -130,7 +130,7 @@ impl flags::AnalysisStats {
         let source_roots = krates
             .iter()
             .cloned()
-            .map(|krate| (db.file_source_root(krate.root_file(db)).source_root_id(db), krate))
+            .map(|krate| (db.file_source_root(krate.root_file(db)), krate))
             .unique_by(|(source_root_id, _)| *source_root_id);
 
         let mut dep_loc = 0;
@@ -142,13 +142,13 @@ impl flags::AnalysisStats {
         let mut dep_item_stats = PrettyItemStats::default();
 
         for (source_root_id, krate) in source_roots {
-            let source_root = db.source_root(source_root_id).source_root(db);
-            for file_id in source_root.iter() {
-                if let Some(p) = source_root.path_for_file(&file_id)
+            let source_root = db.source_root(source_root_id);
+            for file_id in source_root.iter(db) {
+                if let Some(p) = db.file_path(file_id)
                     && let Some((_, Some("rs"))) = p.name_and_extension()
                 {
                     // measure workspace/project code
-                    if !source_root.is_library || self.with_deps {
+                    if source_root.kind(db) == SourceRootKind::Local || self.with_deps {
                         let length = db.file_text(file_id).text(db).lines().count();
                         let item_stats = hir::db::file_item_tree(
                             db,
@@ -217,9 +217,9 @@ impl flags::AnalysisStats {
             let file_id = module.definition_source_file_id(db);
             let file_id = file_id.original_file(db);
 
-            let source_root = db.file_source_root(file_id.file_id(db)).source_root_id(db);
-            let source_root = db.source_root(source_root).source_root(db);
-            if !source_root.is_library || self.with_deps {
+            let source_root = db.file_source_root(file_id.file_id(db));
+            let source_root = db.source_root(source_root);
+            if source_root.kind(db) == SourceRootKind::Local || self.with_deps {
                 num_crates += 1;
                 visit_queue.push(module);
             }
@@ -347,11 +347,11 @@ impl flags::AnalysisStats {
             }
 
             if !self.skip_lowering {
-                self.run_body_lowering(db, &vfs, &bodies, &signatures, &variants, verbosity);
+                self.run_body_lowering(db, &bodies, &signatures, &variants, verbosity);
             }
 
             if !self.skip_inference {
-                self.run_inference(db, &vfs, &bodies, &signatures, &variants, verbosity);
+                self.run_inference(db, &bodies, &signatures, &variants, verbosity);
             }
 
             if !self.skip_mir_stats {
@@ -371,11 +371,11 @@ impl flags::AnalysisStats {
         file_ids.dedup();
 
         if self.run_all_ide_things {
-            self.run_ide_things(host.analysis(), &file_ids, db, &vfs, verbosity);
+            self.run_ide_things(host.analysis(), &file_ids, db, verbosity);
         }
 
         if self.run_term_search {
-            self.run_term_search(&workspace, db, &vfs, &file_ids, verbosity);
+            self.run_term_search(&workspace, db, &file_ids, verbosity);
         }
 
         let db = host.raw_database_mut();
@@ -392,7 +392,7 @@ impl flags::AnalysisStats {
         report_metric("total memory", total_span.memory.allocated.megabytes() as u64, "MB");
 
         if verbosity.is_verbose() {
-            print_memory_usage(host, vfs);
+            print_memory_usage(host);
         }
 
         Ok(())
@@ -491,7 +491,6 @@ impl flags::AnalysisStats {
         &self,
         ws: &ProjectWorkspace,
         db: &RootDatabase,
-        vfs: &Vfs,
         file_ids: &[EditionedFileId],
         verbosity: Verbosity,
     ) {
@@ -533,7 +532,11 @@ impl flags::AnalysisStats {
 
             let parse = sema.parse_guess_edition(file_id.into());
             let file_txt = db.file_text(file_id.into());
-            let path = vfs.file_path(file_id.into()).as_path().unwrap();
+            let path = db
+                .file_path(file_id.into())
+                .expect("file id has no associated path")
+                .into_abs_path()
+                .expect("term search validation requires a real path");
 
             for node in parse.syntax().descendants() {
                 let expr = match syntax::ast::Expr::cast(node.clone()) {
@@ -621,7 +624,7 @@ impl flags::AnalysisStats {
                     edit.apply(&mut txt);
 
                     if self.validate_term_search {
-                        std::fs::write(path, txt).unwrap();
+                        std::fs::write(&path, txt).unwrap();
 
                         let res = ws.run_build_scripts(&cargo_config, &|_| ()).unwrap();
                         if let Some(err) = res.error()
@@ -676,7 +679,7 @@ impl flags::AnalysisStats {
             }
             // Revert file back to original state
             if self.validate_term_search {
-                std::fs::write(path, file_txt.text(db).to_string()).unwrap();
+                std::fs::write(&path, file_txt.text(db).to_string()).unwrap();
             }
 
             bar.inc(1);
@@ -776,7 +779,6 @@ impl flags::AnalysisStats {
     fn run_inference(
         &self,
         db: &RootDatabase,
-        vfs: &Vfs,
         bodies: &[DefWithBody],
         signatures: &[GenericDef],
         _variants: &[Variant],
@@ -855,7 +857,9 @@ impl flags::AnalysisStats {
                     };
                     if let Some(src) = source {
                         let original_file = src.file_id.original_file(db);
-                        let path = vfs.file_path(original_file.file_id(db));
+                        let path = db
+                            .file_path(original_file.file_id(db))
+                            .expect("file id has no associated path");
                         let syntax_range = src.text_range();
                         format!(
                             "processing: {} ({} {:?})",
@@ -927,8 +931,7 @@ impl flags::AnalysisStats {
                 let unknown_or_partial = if ty.is_ty_error() {
                     num_exprs_unknown += 1;
                     if verbosity.is_spammy() {
-                        if let Some((path, start, end)) = expr_syntax_range(db, vfs, sm(), expr_id)
-                        {
+                        if let Some((path, start, end)) = expr_syntax_range(db, sm(), expr_id) {
                             bar.println(format!(
                                 "{} {}:{}-{}:{}: Unknown type",
                                 path,
@@ -954,7 +957,7 @@ impl flags::AnalysisStats {
                 };
                 if self.only.is_some() && verbosity.is_spammy() {
                     // in super-verbose mode for just one function, we print every single expression
-                    if let Some((_, start, end)) = expr_syntax_range(db, vfs, sm(), expr_id) {
+                    if let Some((_, start, end)) = expr_syntax_range(db, sm(), expr_id) {
                         bar.println(format!(
                             "{}:{}-{}:{}: {}",
                             start.line + 1,
@@ -973,7 +976,7 @@ impl flags::AnalysisStats {
                 if unknown_or_partial && self.output == Some(OutputFormat::Csv) {
                     println!(
                         r#"{},type,"{}""#,
-                        location_csv_expr(db, vfs, sm(), expr_id),
+                        location_csv_expr(db, sm(), expr_id),
                         ty.display(db, display_target)
                     );
                 }
@@ -981,8 +984,7 @@ impl flags::AnalysisStats {
                     num_expr_type_mismatches += 1;
                     if verbosity.is_verbose() {
                         let (expected, actual) = type_mismatch_for_node[&expr_id.into()];
-                        if let Some((path, start, end)) = expr_syntax_range(db, vfs, sm(), expr_id)
-                        {
+                        if let Some((path, start, end)) = expr_syntax_range(db, sm(), expr_id) {
                             bar.println(format!(
                                 "{} {}:{}-{}:{}: Expected {}, got {}",
                                 path,
@@ -1006,7 +1008,7 @@ impl flags::AnalysisStats {
                         let (expected, actual) = type_mismatch_for_node[&expr_id.into()];
                         println!(
                             r#"{},mismatch,"{}","{}""#,
-                            location_csv_expr(db, vfs, sm(), expr_id),
+                            location_csv_expr(db, sm(), expr_id),
                             expected.display(db, display_target),
                             actual.display(db, display_target)
                         );
@@ -1033,7 +1035,7 @@ impl flags::AnalysisStats {
                 let unknown_or_partial = if ty.is_ty_error() {
                     num_pats_unknown += 1;
                     if verbosity.is_spammy() {
-                        if let Some((path, start, end)) = pat_syntax_range(db, vfs, sm(), pat_id) {
+                        if let Some((path, start, end)) = pat_syntax_range(db, sm(), pat_id) {
                             bar.println(format!(
                                 "{} {}:{}-{}:{}: Unknown type",
                                 path,
@@ -1059,7 +1061,7 @@ impl flags::AnalysisStats {
                 };
                 if self.only.is_some() && verbosity.is_spammy() {
                     // in super-verbose mode for just one function, we print every single pattern
-                    if let Some((_, start, end)) = pat_syntax_range(db, vfs, sm(), pat_id) {
+                    if let Some((_, start, end)) = pat_syntax_range(db, sm(), pat_id) {
                         bar.println(format!(
                             "{}:{}-{}:{}: {}",
                             start.line + 1,
@@ -1078,7 +1080,7 @@ impl flags::AnalysisStats {
                 if unknown_or_partial && self.output == Some(OutputFormat::Csv) {
                     println!(
                         r#"{},type,"{}""#,
-                        location_csv_pat(db, vfs, sm(), pat_id),
+                        location_csv_pat(db, sm(), pat_id),
                         ty.display(db, display_target)
                     );
                 }
@@ -1086,7 +1088,7 @@ impl flags::AnalysisStats {
                     num_pat_type_mismatches += 1;
                     if verbosity.is_verbose() {
                         let (expected, actual) = type_mismatch_for_node[&pat_id.into()];
-                        if let Some((path, start, end)) = pat_syntax_range(db, vfs, sm(), pat_id) {
+                        if let Some((path, start, end)) = pat_syntax_range(db, sm(), pat_id) {
                             bar.println(format!(
                                 "{} {}:{}-{}:{}: Expected {}, got {}",
                                 path,
@@ -1110,7 +1112,7 @@ impl flags::AnalysisStats {
                         let (expected, actual) = type_mismatch_for_node[&pat_id.into()];
                         println!(
                             r#"{},mismatch,"{}","{}""#,
-                            location_csv_pat(db, vfs, sm(), pat_id),
+                            location_csv_pat(db, sm(), pat_id),
                             expected.display(db, display_target),
                             actual.display(db, display_target)
                         );
@@ -1162,7 +1164,6 @@ impl flags::AnalysisStats {
     fn run_body_lowering(
         &self,
         db: &RootDatabase,
-        vfs: &Vfs,
         bodies: &[DefWithBody],
         signatures: &[GenericDef],
         variants: &[Variant],
@@ -1197,7 +1198,9 @@ impl flags::AnalysisStats {
                     };
                     if let Some(src) = source {
                         let original_file = src.file_id.original_file(db);
-                        let path = vfs.file_path(original_file.file_id(db));
+                        let path = db
+                            .file_path(original_file.file_id(db))
+                            .expect("file id has no associated path");
                         let syntax_range = src.text_range();
                         format!(
                             "processing: {} ({} {:?})",
@@ -1235,7 +1238,9 @@ impl flags::AnalysisStats {
                     };
                     if let Some(src) = source {
                         let original_file = src.file_id.original_file(db);
-                        let path = vfs.file_path(original_file.file_id(db));
+                        let path = db
+                            .file_path(original_file.file_id(db))
+                            .expect("file id has no associated path");
                         let syntax_range = src.text_range();
                         format!(
                             "processing: {} ({} {:?})",
@@ -1276,7 +1281,9 @@ impl flags::AnalysisStats {
                     };
                     if let Some(src) = source {
                         let original_file = src.file_id.original_file(db);
-                        let path = vfs.file_path(original_file.file_id(db));
+                        let path = db
+                            .file_path(original_file.file_id(db))
+                            .expect("file id has no associated path");
                         let syntax_range = src.text_range();
                         format!(
                             "processing: {} ({} {:?})",
@@ -1331,7 +1338,6 @@ impl flags::AnalysisStats {
         analysis: Analysis,
         file_ids: &[EditionedFileId],
         db: &RootDatabase,
-        vfs: &Vfs,
         verbosity: Verbosity,
     ) {
         let len = file_ids.len();
@@ -1345,7 +1351,8 @@ impl flags::AnalysisStats {
 
         let mut bar = create_bar();
         for &file_id in file_ids {
-            let msg = format!("diagnostics: {}", vfs.file_path(file_id.file_id(db)));
+            let path = db.file_path(file_id.file_id(db)).expect("file id has no associated path");
+            let msg = format!("diagnostics: {path}");
             bar.set_message(move || msg.clone());
             _ = analysis.full_diagnostics(
                 &DiagnosticsConfig {
@@ -1380,7 +1387,8 @@ impl flags::AnalysisStats {
 
         let mut bar = create_bar();
         for &file_id in file_ids {
-            let msg = format!("inlay hints: {}", vfs.file_path(file_id.file_id(db)));
+            let path = db.file_path(file_id.file_id(db)).expect("file id has no associated path");
+            let msg = format!("inlay hints: {path}");
             bar.set_message(move || msg.clone());
             _ = analysis.inlay_hints(
                 &InlayHintsConfig {
@@ -1439,7 +1447,8 @@ impl flags::AnalysisStats {
             ra_fixture: RaFixtureConfig::default(),
         };
         for &file_id in file_ids {
-            let msg = format!("annotations: {}", vfs.file_path(file_id.file_id(db)));
+            let path = db.file_path(file_id.file_id(db)).expect("file id has no associated path");
+            let msg = format!("annotations: {path}");
             bar.set_message(move || msg.clone());
             analysis
                 .annotations(&annotation_config, analysis.editioned_file_id_to_vfs(file_id))
@@ -1497,7 +1506,7 @@ fn full_name(db: &RootDatabase, name: impl Fn() -> Option<Name>, module: hir::Mo
         .join("::")
 }
 
-fn location_csv_expr(db: &RootDatabase, vfs: &Vfs, sm: &BodySourceMap, expr_id: ExprId) -> String {
+fn location_csv_expr(db: &RootDatabase, sm: &BodySourceMap, expr_id: ExprId) -> String {
     let src = match sm.expr_syntax(expr_id) {
         Ok(s) => s,
         Err(SyntheticSyntax) => return "synthetic,,".to_owned(),
@@ -1505,7 +1514,8 @@ fn location_csv_expr(db: &RootDatabase, vfs: &Vfs, sm: &BodySourceMap, expr_id: 
     let root = src.file_id.parse_or_expand(db);
     let node = src.map(|e| e.to_node(&root).syntax().clone());
     let original_range = node.as_ref().original_file_range_rooted(db);
-    let path = vfs.file_path(original_range.file_id.file_id(db));
+    let path =
+        db.file_path(original_range.file_id.file_id(db)).expect("file id has no associated path");
     let line_index = line_index(db, original_range.file_id.file_id(db));
     let text_range = original_range.range;
     let (start, end) =
@@ -1513,7 +1523,7 @@ fn location_csv_expr(db: &RootDatabase, vfs: &Vfs, sm: &BodySourceMap, expr_id: 
     format!("{path},{}:{},{}:{}", start.line + 1, start.col, end.line + 1, end.col)
 }
 
-fn location_csv_pat(db: &RootDatabase, vfs: &Vfs, sm: &BodySourceMap, pat_id: PatId) -> String {
+fn location_csv_pat(db: &RootDatabase, sm: &BodySourceMap, pat_id: PatId) -> String {
     let src = match sm.pat_syntax(pat_id) {
         Ok(s) => s,
         Err(SyntheticSyntax) => return "synthetic,,".to_owned(),
@@ -1521,7 +1531,8 @@ fn location_csv_pat(db: &RootDatabase, vfs: &Vfs, sm: &BodySourceMap, pat_id: Pa
     let root = src.file_id.parse_or_expand(db);
     let node = src.map(|e| e.to_node(&root).syntax().clone());
     let original_range = node.as_ref().original_file_range_rooted(db);
-    let path = vfs.file_path(original_range.file_id.file_id(db));
+    let path =
+        db.file_path(original_range.file_id.file_id(db)).expect("file id has no associated path");
     let line_index = line_index(db, original_range.file_id.file_id(db));
     let text_range = original_range.range;
     let (start, end) =
@@ -1529,18 +1540,19 @@ fn location_csv_pat(db: &RootDatabase, vfs: &Vfs, sm: &BodySourceMap, pat_id: Pa
     format!("{path},{}:{},{}:{}", start.line + 1, start.col, end.line + 1, end.col)
 }
 
-fn expr_syntax_range<'a>(
+fn expr_syntax_range(
     db: &RootDatabase,
-    vfs: &'a Vfs,
     sm: &BodySourceMap,
     expr_id: ExprId,
-) -> Option<(&'a VfsPath, LineCol, LineCol)> {
+) -> Option<(VfsPath, LineCol, LineCol)> {
     let src = sm.expr_syntax(expr_id);
     if let Ok(src) = src {
         let root = src.file_id.parse_or_expand(db);
         let node = src.map(|e| e.to_node(&root).syntax().clone());
         let original_range = node.as_ref().original_file_range_rooted(db);
-        let path = vfs.file_path(original_range.file_id.file_id(db));
+        let path = db
+            .file_path(original_range.file_id.file_id(db))
+            .expect("file id has no associated path");
         let line_index = line_index(db, original_range.file_id.file_id(db));
         let text_range = original_range.range;
         let (start, end) =
@@ -1550,18 +1562,19 @@ fn expr_syntax_range<'a>(
         None
     }
 }
-fn pat_syntax_range<'a>(
+fn pat_syntax_range(
     db: &RootDatabase,
-    vfs: &'a Vfs,
     sm: &BodySourceMap,
     pat_id: PatId,
-) -> Option<(&'a VfsPath, LineCol, LineCol)> {
+) -> Option<(VfsPath, LineCol, LineCol)> {
     let src = sm.pat_syntax(pat_id);
     if let Ok(src) = src {
         let root = src.file_id.parse_or_expand(db);
         let node = src.map(|e| e.to_node(&root).syntax().clone());
         let original_range = node.as_ref().original_file_range_rooted(db);
-        let path = vfs.file_path(original_range.file_id.file_id(db));
+        let path = db
+            .file_path(original_range.file_id.file_id(db))
+            .expect("file id has no associated path");
         let line_index = line_index(db, original_range.file_id.file_id(db));
         let text_range = original_range.range;
         let (start, end) =

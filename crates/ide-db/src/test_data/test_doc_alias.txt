@@ -2,7 +2,7 @@
     (
         Module {
             id: ModuleIdLt {
-                [salsa id]: Id(2800),
+                [salsa id]: Id(2400),
             },
         },
         [
@@ -20,7 +20,7 @@
                 loc: DeclarationLocation {
                     hir_file_id: FileId(
                         EditionedFileId(
-                            Id(2400),
+                            Id(2000),
                         ),
                     ),
                     ptr: SyntaxNodePtr {
@@ -57,7 +57,7 @@
                 loc: DeclarationLocation {
                     hir_file_id: FileId(
                         EditionedFileId(
-                            Id(2400),
+                            Id(2000),
                         ),
                     ),
                     ptr: SyntaxNodePtr {
@@ -94,7 +94,7 @@
                 loc: DeclarationLocation {
                     hir_file_id: FileId(
                         EditionedFileId(
-                            Id(2400),
+                            Id(2000),
                         ),
                     ),
                     ptr: SyntaxNodePtr {
@@ -131,7 +131,7 @@
                 loc: DeclarationLocation {
                     hir_file_id: FileId(
                         EditionedFileId(
-                            Id(2400),
+                            Id(2000),
                         ),
                     ),
                     ptr: SyntaxNodePtr {
@@ -168,7 +168,7 @@
                 loc: DeclarationLocation {
                     hir_file_id: FileId(
                         EditionedFileId(
-                            Id(2400),
+                            Id(2000),
                         ),
                     ),
                     ptr: SyntaxNodePtr {
@@ -205,7 +205,7 @@
                 loc: DeclarationLocation {
                     hir_file_id: FileId(
                         EditionedFileId(
-                            Id(2400),
+                            Id(2000),
                         ),
                     ),
                     ptr: SyntaxNodePtr {
@@ -242,7 +242,7 @@
                 loc: DeclarationLocation {
                     hir_file_id: FileId(
                         EditionedFileId(
-                            Id(2400),
+                            Id(2000),
                         ),
                     ),
                     ptr: SyntaxNodePtr {

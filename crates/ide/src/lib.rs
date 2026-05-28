@@ -136,7 +136,7 @@ pub use ide_completion::{
 pub use ide_db::{
     FileId, FilePosition, FileRange, RootDatabase, Severity, SymbolKind,
     assists::ExprFillDefaultMode,
-    base_db::{Crate, CrateGraphBuilder, FileChange, SourceRoot, SourceRootId},
+    base_db::{Crate, CrateGraphBuilder, FileChange, SourceRootId, SourceRootKind},
     documentation::Documentation,
     label::Label,
     line_index::{LineCol, LineIndex},
@@ -260,10 +260,9 @@ impl Analysis {
         let file_id = FileId::from_raw(0);
         let mut file_set = FileSet::default();
         file_set.insert(file_id, VfsPath::new_virtual_path("/main.rs".to_owned()));
-        let source_root = SourceRoot::new_local(file_set);
 
         let mut change = ChangeWithProcMacros::default();
-        change.set_roots(vec![source_root]);
+        change.set_roots(vec![(SourceRootKind::Local, file_set)]);
         let mut crate_graph = CrateGraphBuilder::default();
         // FIXME: cfg options
         // Default to enable test for single file.
@@ -323,13 +322,13 @@ impl Analysis {
     }
 
     pub fn source_root_id(&self, file_id: FileId) -> Cancellable<SourceRootId> {
-        self.with_db(|db| db.file_source_root(file_id).source_root_id(db))
+        self.with_db(|db| db.file_source_root(file_id))
     }
 
     pub fn is_local_source_root(&self, source_root_id: SourceRootId) -> Cancellable<bool> {
         self.with_db(|db| {
-            let sr = db.source_root(source_root_id).source_root(db);
-            !sr.is_library
+            let sr = db.source_root(source_root_id);
+            sr.kind(db) == SourceRootKind::Local
         })
     }
 
@@ -358,8 +357,8 @@ impl Analysis {
     /// Returns true if this file belongs to an immutable library.
     pub fn is_library_file(&self, file_id: FileId) -> Cancellable<bool> {
         self.with_db(|db| {
-            let source_root = db.file_source_root(file_id).source_root_id(db);
-            db.source_root(source_root).source_root(db).is_library
+            let source_root = db.file_source_root(file_id);
+            db.source_root(source_root).kind(db) == SourceRootKind::Library
         })
     }
 
@@ -367,6 +366,21 @@ impl Analysis {
     /// offsets and line/column representation.
     pub fn file_line_index(&self, file_id: FileId) -> Cancellable<Arc<LineIndex>> {
         self.with_db(|db| line_index(db, file_id).clone())
+    }
+
+    /// Gets the line endings of the original (pre-normalization) file text.
+    pub fn file_line_endings(&self, file_id: FileId) -> Cancellable<ide_db::base_db::LineEndings> {
+        self.with_db(|db| SourceDatabase::file_text(db, file_id).line_endings(db))
+    }
+
+    /// The path of a file, or `None` if the file id is unknown to the VFS.
+    pub fn file_path(&self, file_id: FileId) -> Option<VfsPath> {
+        hir::attach_db(&self.db, || SourceDatabase::file_path(&self.db, file_id))
+    }
+
+    /// The file id for a path, or `None` if the path is unknown or excluded.
+    pub fn file_id_for_path(&self, path: &VfsPath) -> Option<FileId> {
+        hir::attach_db(&self.db, || SourceDatabase::file_id_for_path(&self.db, path))
     }
 
     /// Selects the next syntactic nodes encompassing the range.
@@ -971,4 +985,22 @@ impl Analysis {
 fn analysis_is_send() {
     fn is_send<T: Send>() {}
     is_send::<Analysis>();
+}
+
+#[test]
+fn file_path_accessors_use_source_roots() {
+    let mut host = AnalysisHost::default();
+    let file_id = FileId::from_raw(0);
+    let path = VfsPath::new_virtual_path("/lib.rs".to_owned());
+    let mut file_set = FileSet::default();
+    file_set.insert(file_id, path.clone());
+
+    let mut change = ChangeWithProcMacros::default();
+    change.set_roots(vec![(SourceRootKind::Local, file_set)]);
+    host.apply_change(change);
+
+    let analysis = host.analysis();
+    assert_eq!(analysis.file_path(file_id), Some(path.clone()));
+    assert_eq!(analysis.file_id_for_path(&path), Some(file_id));
+    assert_eq!(analysis.file_path(FileId::from_raw(1)), None);
 }

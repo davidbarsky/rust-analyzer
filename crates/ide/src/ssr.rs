@@ -58,7 +58,7 @@ pub(crate) fn ssr_assists(
 mod tests {
     use expect_test::expect;
     use ide_assists::{Assist, AssistResolveStrategy};
-    use ide_db::{FileRange, FxHashSet, LocalRoots, RootDatabase, base_db::salsa::Setter as _};
+    use ide_db::{FileRange, RootDatabase};
     use test_fixture::WithFixture;
 
     use super::ssr_assists;
@@ -67,10 +67,7 @@ mod tests {
         #[rust_analyzer::rust_fixture] ra_fixture: &str,
         resolve: AssistResolveStrategy,
     ) -> Vec<Assist> {
-        let (mut db, file_id, range_or_offset) = RootDatabase::with_range_or_offset(ra_fixture);
-        let mut local_roots = FxHashSet::default();
-        local_roots.insert(test_fixture::WORKSPACE);
-        LocalRoots::get(&db).set_roots(&mut db).to(local_roots);
+        let (db, file_id, range_or_offset) = RootDatabase::with_range_or_offset(ra_fixture);
         ssr_assists(
             &db,
             &resolve,

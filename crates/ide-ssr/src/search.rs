@@ -6,7 +6,8 @@ use crate::{
 };
 use hir::FileRange;
 use ide_db::{
-    FileId, FxHashSet, LocalRoots,
+    FileId, FxHashSet,
+    base_db::local_roots,
     defs::Definition,
     search::{SearchScope, UsageSearchResult},
 };
@@ -152,9 +153,9 @@ impl<'db> MatchFinder<'db> {
         if self.restrict_ranges.is_empty() {
             // Unrestricted search.
             use ide_db::base_db::SourceDatabase;
-            for &root in LocalRoots::get(self.sema.db).roots(self.sema.db).iter() {
-                let sr = self.sema.db.source_root(root).source_root(self.sema.db);
-                for file_id in sr.iter() {
+            for &root in local_roots(self.sema.db).iter() {
+                let sr = self.sema.db.source_root(root);
+                for file_id in sr.iter(self.sema.db) {
                     callback(file_id);
                 }
             }

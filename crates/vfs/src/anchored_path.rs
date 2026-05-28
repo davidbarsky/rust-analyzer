@@ -18,8 +18,8 @@
 //! `#[path = "/abs/path.rs"]` actually depends on which file-system we are at!
 //! That is, even absolute paths exist relative to a file system!
 //!
-//! A more realistic scenario here is virtual VFS paths we use for testing. More
-//! generally, there can be separate "universes" of VFS paths.
+//! A more realistic scenario here is virtual paths we use for testing. More
+//! generally, there can be separate path "universes".
 //!
 //! That's why we use anchored representation -- each path carries an info about
 //! a file this path originates from. We can fetch fs/"universe" information
@@ -29,7 +29,7 @@ use crate::FileId;
 /// Path relative to a file.
 ///
 /// Owned version of [`AnchoredPath`].
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct AnchoredPathBuf {
     /// File that this path is relative to.
     pub anchor: FileId,
@@ -40,7 +40,7 @@ pub struct AnchoredPathBuf {
 /// Path relative to a file.
 ///
 /// Borrowed version of [`AnchoredPathBuf`].
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct AnchoredPath<'a> {
     /// File that this path is relative to.
     pub anchor: FileId,

@@ -60,8 +60,7 @@ use salsa::Durability;
 use std::{fmt, mem::ManuallyDrop};
 
 use base_db::{
-    CrateGraphBuilder, CratesMap, FileSourceRootInput, FileText, Files, Nonce, SourceDatabase,
-    SourceRoot, SourceRootId, SourceRootInput, set_all_crates_with_durability,
+    CrateGraphBuilder, CratesMap, Nonce, SourceDatabase, set_all_crates_with_durability,
 };
 use hir::{FilePositionWrapper, FileRangeWrapper, db::HirDatabase};
 use triomphe::Arc;
@@ -72,7 +71,7 @@ pub use rustc_hash::{FxHashMap, FxHashSet, FxHasher};
 pub use ::line_index;
 
 /// `base_db` is normally also needed in places where `ide_db` is used, so this re-export is for convenience.
-pub use base_db::{self, FxIndexMap, FxIndexSet, LibraryRoots, LocalRoots};
+pub use base_db::{self, FxIndexMap, FxIndexSet};
 pub use span::{self, FileId};
 
 pub type FilePosition = FilePositionWrapper<FileId>;
@@ -87,7 +86,6 @@ pub struct RootDatabase {
     // which duplicates `Weak::drop` and `Arc::drop` tens of thousands of times, which makes
     // compile times of all `ide_*` and downstream crates suffer greatly.
     storage: ManuallyDrop<salsa::Storage<Self>>,
-    files: Arc<Files>,
     crates_map: Arc<CratesMap>,
     nonce: Nonce,
 }
@@ -107,7 +105,6 @@ impl Clone for RootDatabase {
     fn clone(&self) -> Self {
         Self {
             storage: self.storage.clone(),
-            files: self.files.clone(),
             crates_map: self.crates_map.clone(),
             nonce: self.nonce,
         }
@@ -122,54 +119,6 @@ impl fmt::Debug for RootDatabase {
 
 #[salsa_macros::db]
 impl SourceDatabase for RootDatabase {
-    fn file_text(&self, file_id: vfs::FileId) -> FileText {
-        self.files.file_text(file_id)
-    }
-
-    fn set_file_text(&mut self, file_id: vfs::FileId, text: &str) {
-        let files = Arc::clone(&self.files);
-        files.set_file_text(self, file_id, text);
-    }
-
-    fn set_file_text_with_durability(
-        &mut self,
-        file_id: vfs::FileId,
-        text: &str,
-        durability: Durability,
-    ) {
-        let files = Arc::clone(&self.files);
-        files.set_file_text_with_durability(self, file_id, text, durability);
-    }
-
-    /// Source root of the file.
-    fn source_root(&self, source_root_id: SourceRootId) -> SourceRootInput {
-        self.files.source_root(source_root_id)
-    }
-
-    fn set_source_root_with_durability(
-        &mut self,
-        source_root_id: SourceRootId,
-        source_root: Arc<SourceRoot>,
-        durability: Durability,
-    ) {
-        let files = Arc::clone(&self.files);
-        files.set_source_root_with_durability(self, source_root_id, source_root, durability);
-    }
-
-    fn file_source_root(&self, id: vfs::FileId) -> FileSourceRootInput {
-        self.files.file_source_root(self, id)
-    }
-
-    fn set_file_source_root_with_durability(
-        &mut self,
-        id: vfs::FileId,
-        source_root_id: SourceRootId,
-        durability: Durability,
-    ) {
-        let files = Arc::clone(&self.files);
-        files.set_file_source_root_with_durability(self, id, source_root_id, durability);
-    }
-
     fn crates_map(&self) -> Arc<CratesMap> {
         self.crates_map.clone()
     }
@@ -193,7 +142,6 @@ impl RootDatabase {
     pub fn new(lru_capacity: Option<u16>) -> RootDatabase {
         let mut db = RootDatabase {
             storage: ManuallyDrop::new(salsa::Storage::default()),
-            files: Default::default(),
             crates_map: Default::default(),
             nonce: Nonce::new(),
         };
@@ -201,11 +149,11 @@ impl RootDatabase {
         set_all_crates_with_durability(&mut db, std::iter::empty(), Durability::HIGH);
         CrateGraphBuilder::default().set_in_db(&mut db);
         hir::ProcMacros::init_default(&db, Durability::MEDIUM);
-        _ = base_db::LibraryRoots::builder(Default::default())
-            .durability(Durability::MEDIUM)
+        _ = base_db::FileTextTable::builder(Default::default())
+            .durability(Durability::LOW)
             .new(&db);
-        _ = base_db::LocalRoots::builder(Default::default())
-            .durability(Durability::MEDIUM)
+        _ = base_db::SourceRootTable::builder(Default::default())
+            .durability(Durability::LOW)
             .new(&db);
         hir::db::set_expand_proc_attr_macros(&mut db, false);
         db.update_base_query_lru_capacities(lru_capacity);
@@ -420,5 +368,89 @@ impl<'a> Default for MiniCore<'a> {
     #[inline]
     fn default() -> Self {
         Self::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use base_db::{FileChange, FileId, FileSet, SourceDatabase, SourceRootKind, VfsPath};
+
+    use crate::RootDatabase;
+
+    #[test]
+    fn source_roots_provide_file_id_and_path() {
+        let mut db = RootDatabase::new(None);
+        let file_id = FileId::from_raw(0);
+        let path = VfsPath::new_virtual_path("/foo.rs".to_owned());
+        let mut file_set = FileSet::default();
+        file_set.insert(file_id, path.clone());
+
+        let mut change = FileChange::default();
+        change.set_roots(vec![(SourceRootKind::Local, file_set)]);
+        change.apply(&mut db);
+
+        assert_eq!(db.file_path(file_id), Some(path.clone()));
+        assert_eq!(db.file_id_for_path(&path), Some(file_id));
+        assert_eq!(db.file_path(FileId::from_raw(1)), None);
+        assert_eq!(db.file_id_for_path(&VfsPath::new_virtual_path("/bar.rs".to_owned())), None);
+    }
+
+    #[test]
+    fn duplicate_paths_are_rejected() {
+        let mut db = RootDatabase::new(None);
+        let first_lib = FileId::from_raw(0);
+        let first_foo = FileId::from_raw(1);
+        let second_lib = FileId::from_raw(2);
+        let second_foo = FileId::from_raw(3);
+        let lib_path = VfsPath::new_virtual_path("/lib.rs".to_owned());
+        let foo_path = VfsPath::new_virtual_path("/foo.rs".to_owned());
+
+        let mut first_file_set = FileSet::default();
+        first_file_set.insert(first_lib, lib_path.clone());
+        first_file_set.insert(first_foo, foo_path.clone());
+        let mut second_file_set = FileSet::default();
+        second_file_set.insert(second_lib, lib_path.clone());
+        second_file_set.insert(second_foo, foo_path.clone());
+
+        let mut change = FileChange::default();
+        change.set_roots(vec![
+            (SourceRootKind::Local, first_file_set),
+            (SourceRootKind::Local, second_file_set),
+        ]);
+        let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            change.apply(&mut db);
+        }))
+        .expect_err("duplicate file path should panic");
+        let message = match panic.downcast_ref::<String>() {
+            Some(message) => message.as_str(),
+            None => match panic.downcast_ref::<&'static str>() {
+                Some(message) => *message,
+                None => panic!("unexpected panic payload for duplicate file path"),
+            },
+        };
+        assert!(message.contains("duplicate file path"), "{message}");
+    }
+
+    #[test]
+    fn removed_source_roots_do_not_leave_paths_behind() {
+        let mut db = RootDatabase::new(None);
+        let file_id = FileId::from_raw(0);
+        let path = VfsPath::new_virtual_path("/foo.rs".to_owned());
+        let mut file_set = FileSet::default();
+        file_set.insert(file_id, path.clone());
+
+        let mut change = FileChange::default();
+        change.set_roots(vec![(SourceRootKind::Local, file_set)]);
+        change.apply(&mut db);
+
+        assert_eq!(db.file_path(file_id), Some(path.clone()));
+        assert_eq!(db.file_id_for_path(&path), Some(file_id));
+
+        let mut change = FileChange::default();
+        change.set_roots(Vec::new());
+        change.apply(&mut db);
+
+        assert_eq!(db.file_path(file_id), None);
+        assert_eq!(db.file_id_for_path(&path), None);
     }
 }

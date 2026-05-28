@@ -3,8 +3,8 @@
 use std::{fmt, panic, sync::Mutex};
 
 use base_db::{
-    CrateGraphBuilder, CratesMap, FileSourceRootInput, FileText, Nonce, SourceDatabase, SourceRoot,
-    SourceRootId, SourceRootInput, all_crates, relevant_crates, set_all_crates_with_durability,
+    CrateGraphBuilder, CratesMap, Nonce, SourceDatabase, all_crates, relevant_crates,
+    set_all_crates_with_durability,
 };
 
 use hir_def::{ModuleId, nameres::crate_def_map};
@@ -19,7 +19,6 @@ use triomphe::Arc;
 #[salsa_macros::db]
 pub(crate) struct TestDB {
     storage: salsa::Storage<Self>,
-    files: Arc<base_db::Files>,
     crates_map: Arc<CratesMap>,
     events: Arc<Mutex<Option<Vec<salsa::Event>>>>,
     nonce: Nonce,
@@ -39,18 +38,17 @@ impl Default for TestDB {
                 }
             }))),
             events,
-            files: Default::default(),
             crates_map: Default::default(),
             nonce: Nonce::new(),
         };
         hir_def::set_expand_proc_attr_macros(&mut this, true);
         // This needs to be here otherwise `CrateGraphBuilder` panics.
         set_all_crates_with_durability(&mut this, std::iter::empty(), Durability::HIGH);
-        _ = base_db::LibraryRoots::builder(Default::default())
-            .durability(Durability::MEDIUM)
+        _ = base_db::FileTextTable::builder(Default::default())
+            .durability(Durability::LOW)
             .new(&this);
-        _ = base_db::LocalRoots::builder(Default::default())
-            .durability(Durability::MEDIUM)
+        _ = base_db::SourceRootTable::builder(Default::default())
+            .durability(Durability::LOW)
             .new(&this);
         CrateGraphBuilder::default().set_in_db(&mut this);
         this
@@ -61,7 +59,6 @@ impl Clone for TestDB {
     fn clone(&self) -> Self {
         Self {
             storage: self.storage.clone(),
-            files: self.files.clone(),
             crates_map: self.crates_map.clone(),
             events: self.events.clone(),
             nonce: Nonce::new(),
@@ -77,54 +74,6 @@ impl fmt::Debug for TestDB {
 
 #[salsa_macros::db]
 impl SourceDatabase for TestDB {
-    fn file_text(&self, file_id: base_db::FileId) -> FileText {
-        self.files.file_text(file_id)
-    }
-
-    fn set_file_text(&mut self, file_id: base_db::FileId, text: &str) {
-        let files = Arc::clone(&self.files);
-        files.set_file_text(self, file_id, text);
-    }
-
-    fn set_file_text_with_durability(
-        &mut self,
-        file_id: base_db::FileId,
-        text: &str,
-        durability: Durability,
-    ) {
-        let files = Arc::clone(&self.files);
-        files.set_file_text_with_durability(self, file_id, text, durability);
-    }
-
-    /// Source root of the file.
-    fn source_root(&self, source_root_id: SourceRootId) -> SourceRootInput {
-        self.files.source_root(source_root_id)
-    }
-
-    fn set_source_root_with_durability(
-        &mut self,
-        source_root_id: SourceRootId,
-        source_root: Arc<SourceRoot>,
-        durability: Durability,
-    ) {
-        let files = Arc::clone(&self.files);
-        files.set_source_root_with_durability(self, source_root_id, source_root, durability);
-    }
-
-    fn file_source_root(&self, id: base_db::FileId) -> FileSourceRootInput {
-        self.files.file_source_root(self, id)
-    }
-
-    fn set_file_source_root_with_durability(
-        &mut self,
-        id: base_db::FileId,
-        source_root_id: SourceRootId,
-        durability: Durability,
-    ) {
-        let files = Arc::clone(&self.files);
-        files.set_file_source_root_with_durability(self, id, source_root_id, durability);
-    }
-
     fn crates_map(&self) -> Arc<CratesMap> {
         self.crates_map.clone()
     }

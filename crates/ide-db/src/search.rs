@@ -7,7 +7,7 @@
 use std::mem;
 use std::{cell::LazyCell, cmp::Reverse};
 
-use base_db::{SourceDatabase, all_crates};
+use base_db::{SourceDatabase, SourceRootKind, all_crates};
 use either::Either;
 use hir::{
     Adt, AsAssocItem, DefWithBody, EditionedFileId, ExpressionStoreOwner, FileRange,
@@ -164,11 +164,11 @@ impl SearchScope {
         let all_crates = all_crates(db);
         for &krate in all_crates.iter() {
             let crate_data = krate.data(db);
-            let source_root = db.file_source_root(crate_data.root_file_id).source_root_id(db);
-            let source_root = db.source_root(source_root).source_root(db);
+            let source_root = db.file_source_root(crate_data.root_file_id);
+            let source_root = db.source_root(source_root);
             entries.extend(
                 source_root
-                    .iter()
+                    .iter(db)
                     .map(|id| (EditionedFileId::new(db, id, crate_data.edition), None)),
             );
         }
@@ -181,11 +181,11 @@ impl SearchScope {
         for rev_dep in of.transitive_reverse_dependencies(db) {
             let root_file = rev_dep.root_file(db);
 
-            let source_root = db.file_source_root(root_file).source_root_id(db);
-            let source_root = db.source_root(source_root).source_root(db);
+            let source_root = db.file_source_root(root_file);
+            let source_root = db.source_root(source_root);
             entries.extend(
                 source_root
-                    .iter()
+                    .iter(db)
                     .map(|id| (EditionedFileId::new(db, id, rev_dep.edition(db)), None)),
             );
         }
@@ -196,11 +196,11 @@ impl SearchScope {
     fn krate(db: &RootDatabase, of: hir::Crate) -> SearchScope {
         let root_file = of.root_file(db);
 
-        let source_root_id = db.file_source_root(root_file).source_root_id(db);
-        let source_root = db.source_root(source_root_id).source_root(db);
+        let source_root_id = db.file_source_root(root_file);
+        let source_root = db.source_root(source_root_id);
         SearchScope {
             entries: source_root
-                .iter()
+                .iter(db)
                 .map(|id| (EditionedFileId::new(db, id, of.edition(db)), None))
                 .collect(),
         }
@@ -1462,6 +1462,6 @@ fn is_name_ref_in_test(sema: &Semantics<'_, RootDatabase>, name_ref: &ast::NameR
 }
 
 fn is_library_file(db: &RootDatabase, file_id: span::FileId) -> bool {
-    let source_root = db.file_source_root(file_id).source_root_id(db);
-    db.source_root(source_root).source_root(db).is_library
+    let source_root = db.file_source_root(file_id);
+    db.source_root(source_root).kind(db) == SourceRootKind::Library
 }

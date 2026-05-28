@@ -6,7 +6,7 @@ use either::Either;
 use hir::{Crate, Module, Semantics, db::HirDatabase};
 use ide_db::{
     FileId, FileRange, FxHashMap, FxHashSet, RootDatabase,
-    base_db::{SourceDatabase, VfsPath},
+    base_db::{SourceDatabase, SourceRootKind, VfsPath},
     defs::{Definition, IdentClass},
     documentation::Documentation,
     famous_defs::FamousDefs,
@@ -273,17 +273,16 @@ impl StaticIndex<'_> {
         hir::attach_db(db, || {
             let work = all_modules(db).into_iter().filter(|module| {
                 let file_id = module.definition_source_file_id(db).original_file(db);
-                let source_root =
-                    db.file_source_root(file_id.file_id(&analysis.db)).source_root_id(db);
-                let source_root = db.source_root(source_root).source_root(db);
+                let source_root = db.file_source_root(file_id.file_id(&analysis.db));
+                let source_root = db.source_root(source_root);
                 let is_vendored = match vendored_libs_config {
-                    VendoredLibrariesConfig::Included { workspace_root } => source_root
-                        .path_for_file(&file_id.file_id(&analysis.db))
+                    VendoredLibrariesConfig::Included { workspace_root } => db
+                        .file_path(file_id.file_id(&analysis.db))
                         .is_some_and(|module_path| module_path.starts_with(workspace_root)),
                     VendoredLibrariesConfig::Excluded => false,
                 };
 
-                !source_root.is_library || is_vendored
+                source_root.kind(db) == SourceRootKind::Local || is_vendored
             });
             let mut this = StaticIndex {
                 files: vec![],

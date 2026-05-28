@@ -3,20 +3,20 @@
 
 use std::fmt;
 
-use rustc_hash::FxHashSet;
+use rustc_hash::FxHashMap;
 use salsa::{Durability, Setter as _};
 use triomphe::Arc;
-use vfs::FileId;
+use vfs::{FileId, file_set::FileSet};
 
 use crate::{
-    CrateGraphBuilder, CratesIdMap, LibraryRoots, LocalRoots, SourceDatabase, SourceRoot,
-    SourceRootId,
+    CrateGraphBuilder, CratesIdMap, FileTextRegistration, LineEndings, SourceDatabase, SourceRoot,
+    SourceRootId, SourceRootKind, SourceRootTable, register_file_texts,
 };
 
 /// Encapsulate a bunch of raw `.set` calls on the database.
 #[derive(Default)]
 pub struct FileChange {
-    pub roots: Option<Vec<SourceRoot>>,
+    pub roots: Option<Vec<(SourceRootKind, FileSet)>>,
     pub files_changed: Vec<(FileId, Option<String>)>,
     pub crate_graph: Option<CrateGraphBuilder>,
 }
@@ -38,7 +38,7 @@ impl fmt::Debug for FileChange {
 }
 
 impl FileChange {
-    pub fn set_roots(&mut self, roots: Vec<SourceRoot>) {
+    pub fn set_roots(&mut self, roots: Vec<(SourceRootKind, FileSet)>) {
         self.roots = Some(roots);
     }
 
@@ -52,48 +52,96 @@ impl FileChange {
 
     pub fn apply(self, db: &mut dyn SourceDatabase) -> Option<CratesIdMap> {
         let _p = tracing::info_span!("FileChange::apply").entered();
-        if let Some(roots) = self.roots {
-            let mut local_roots = FxHashSet::default();
-            let mut library_roots = FxHashSet::default();
-            for (idx, root) in roots.into_iter().enumerate() {
+        let FileChange { roots, files_changed, crate_graph } = self;
+        let mut file_durability = FxHashMap::default();
+        if let Some(roots) = roots {
+            let mut file_texts = Vec::new();
+            let mut paths = FxHashMap::default();
+            let mut files = FxHashMap::default();
+            let source_root_table = SourceRootTable::get(db);
+            let roots_by_id = source_root_table.roots(db).clone();
+            let mut active_source_roots = FxHashMap::default();
+            for (idx, (kind, file_set)) in roots.into_iter().enumerate() {
                 let root_id = SourceRootId(idx as u32);
-                if root.is_library {
-                    library_roots.insert(root_id);
-                } else {
-                    local_roots.insert(root_id);
-                }
-                let durability = source_root_durability(&root);
-                for file_id in root.iter() {
-                    db.set_file_source_root_with_durability(file_id, root_id, durability);
+                let durability = source_root_durability(kind);
+                let file_set = Arc::new(file_set);
+                for file_id in file_set.iter() {
+                    file_texts.push(FileTextRegistration { file_id, durability });
+                    file_durability.insert(file_id, file_text_durability_for_kind(kind));
+                    let path =
+                        file_set.path_for_file(&file_id).expect("source root file has no path");
+                    match files.insert(path.clone(), file_id) {
+                        None => (),
+                        Some(previous) if previous == file_id => (),
+                        Some(previous) => {
+                            panic!(
+                                "duplicate file path `{path}` for file ids {previous:?} and {file_id:?}"
+                            )
+                        }
+                    }
+                    match paths.insert(file_id, path.clone()) {
+                        None => (),
+                        Some(previous) if previous == *path => (),
+                        Some(previous) => {
+                            panic!(
+                                "file id {file_id:?} has multiple file paths `{previous}` and `{path}`"
+                            )
+                        }
+                    }
                 }
 
-                db.set_source_root_with_durability(root_id, Arc::new(root), durability);
+                match roots_by_id.get(&root_id).copied() {
+                    Some(source_root) => {
+                        source_root.set_kind(db).with_durability(durability).to(kind);
+                        source_root.set_file_set(db).with_durability(durability).to(file_set);
+                        active_source_roots.insert(root_id, source_root);
+                    }
+                    None => {
+                        let source_root =
+                            SourceRoot::builder(kind, file_set).durability(durability).new(db);
+                        active_source_roots.insert(root_id, source_root);
+                    }
+                }
             }
-            LocalRoots::get(db).set_roots(db).to(local_roots);
-            LibraryRoots::get(db).set_roots(db).to(library_roots);
+            source_root_table.set_roots(db).to(active_source_roots);
+            register_file_texts(db, file_texts);
         }
 
-        for (file_id, text) in self.files_changed {
-            let source_root_id = db.file_source_root(file_id);
-            let source_root = db.source_root(source_root_id.source_root_id(db));
-
-            let durability = file_text_durability(&source_root.source_root(db));
-            // XXX: can't actually remove the file, just reset the text
-            let text = text.unwrap_or_default();
-            db.set_file_text_with_durability(file_id, &text, durability)
+        for (file_id, text) in files_changed {
+            let durability = file_durability.get(&file_id).copied().unwrap_or_else(|| {
+                let source_root_id = db.file_source_root(file_id);
+                let source_root = db.source_root(source_root_id);
+                file_text_durability_for_kind(source_root.kind(db))
+            });
+            let (text, line_endings) = match text {
+                Some(text) => LineEndings::normalize(text),
+                None => (String::new(), LineEndings::Unix),
+            };
+            db.set_file_text_with_line_endings_and_durability(
+                file_id,
+                &text,
+                line_endings,
+                durability,
+            )
         }
 
-        if let Some(crate_graph) = self.crate_graph {
+        if let Some(crate_graph) = crate_graph {
             return Some(crate_graph.set_in_db(db));
         }
         None
     }
 }
 
-fn source_root_durability(source_root: &SourceRoot) -> Durability {
-    if source_root.is_library { Durability::MEDIUM } else { Durability::LOW }
+fn source_root_durability(kind: SourceRootKind) -> Durability {
+    match kind {
+        SourceRootKind::Local => Durability::LOW,
+        SourceRootKind::Library => Durability::MEDIUM,
+    }
 }
 
-fn file_text_durability(source_root: &SourceRoot) -> Durability {
-    if source_root.is_library { Durability::HIGH } else { Durability::LOW }
+fn file_text_durability_for_kind(kind: SourceRootKind) -> Durability {
+    match kind {
+        SourceRootKind::Local => Durability::LOW,
+        SourceRootKind::Library => Durability::HIGH,
+    }
 }
